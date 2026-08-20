@@ -32,5 +32,11 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Analist Personal Insight
+# Analyst personal insight (notebook eksplorasi)
 analyst/
+
+# image
+image/
+
+# Personal notes (docs/info.md)
+/docs/info.md
