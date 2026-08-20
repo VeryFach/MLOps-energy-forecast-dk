@@ -1,23 +1,20 @@
 import time
 import requests
 import pandas as pd
-from pathlib import Path
 import holidays
 from sklearn.ensemble import RandomForestRegressor
 from joblib import dump, load
 
-from config import (
+from energy_forecast.config import (
     LATITUDE,
     LONGITUDE,
     OPEN_METEO_URL,
     OPEN_METEO_ARCHIVE_URL,
     WEATHER_VARIABLES,
     TIMEZONE,
+    PROCESSED_DIR,
+    MODELS_DIR,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-MODELS_DIR = PROJECT_ROOT / "models"
 
 TARGET = "consumption_mw"
 FEATURES = [

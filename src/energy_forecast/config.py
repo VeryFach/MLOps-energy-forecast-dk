@@ -2,6 +2,15 @@ COUNTRY = "DK"
 COUNTRY_NAME = "Denmark"
 TIMEZONE = "Europe/Copenhagen"
 
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+RAW_DIR = DATA_DIR / "raw"
+PROCESSED_DIR = DATA_DIR / "processed"
+MODELS_DIR = PROJECT_ROOT / "models"
+LOGS_DIR = PROJECT_ROOT / "logs"
+
 LATITUDE = 55.6761
 LONGITUDE = 12.5683
 

@@ -6,11 +6,31 @@ Predict electricity consumption (MW) in Denmark using hourly time-series data fr
 
 ```
 energy-forecast-dk/
-├── app/
-│   ├── config.py            # Parameters: country, coordinates, API URLs, start date
-│   └── fetch_energy_dk.py   # Fetch electricity consumption data & save to CSV
+├── src/energy_forecast/     # Python package (installable via pip install -e .)
+│   ├── config.py            # Parameters: country, coordinates, API URLs, start date, paths
+│   ├── data/                # Ingestion & feature engineering
+│   │   ├── fetch_energy_dk.py
+│   │   ├── fetch_weather.py
+│   │   └── merge_data.py
+│   ├── models/              # Training
+│   │   ├── train_baseline.py
+│   │   └── train_deep_learning.py
+│   ├── predict/             # Inference
+│   │   └── predict_future.py
+│   ├── monitoring/          # Evaluation & retraining trigger
+│   │   ├── evaluate_model.py
+│   │   └── check_trigger.py
+│   └── orchestration/       # Pipeline runner & scheduling
+│       ├── daily_pipeline.py
+│       └── prefect_flow.py
 ├── data/
-│   └── raw/                 # Raw data (git-ignored, created by the script)
+│   ├── raw/                 # Raw data (git-ignored, created by the scripts)
+│   └── processed/           # Merged feature table (git-ignored)
+├── models/                  # Trained models (git-ignored)
+├── logs/                    # Monitoring logs (git-ignored)
+├── docs/
+│   └── README.md            # Pipeline & usage documentation
+├── pyproject.toml
 ├── .gitignore
 └── README.md
 ```
@@ -63,18 +83,29 @@ Activate the environment:
 ### 3. Install dependencies
 
 ```bash
-pip install requests pandas
+pip install -e .
 ```
+
+Optional extras: `pip install -e ".[deep-learning,prefect]"`.
 
 ## Running
 
-### Fetch electricity consumption data
+### Daily data pipeline
+
+Fetch new data and rebuild the feature table with one command:
 
 ```bash
-python app/fetch_energy_dk.py
+python -m energy_forecast.orchestration.daily_pipeline
 ```
 
-This script will:
+This runs, in order: `fetch_energy_dk` → `fetch_weather` → `merge_data`. Each step can also be run individually:
+
+```bash
+python -m energy_forecast.data.fetch_energy_dk
+python -m energy_forecast.data.fetch_weather
+python -m energy_forecast.data.merge_data
+```
+
 1. Call the Energi Data Service API with the `start` parameter (from `config.py`) and `limit=10000`.
 2. Convert the JSON response into a pandas DataFrame.
 3. Save the result to `data/raw/consumption.csv`.
@@ -94,13 +125,17 @@ Structure of `data/raw/consumption.csv`:
 | `PriceArea` | Price area: DK1 (West) / DK2 (East) |
 | `ConsumptionMW` | Electricity consumption in MW |
 
-### (Upcoming) Fetch weather data
+### Predicting the next 24 hours
 
-A `fetch_weather_dk.py` script will use `OPEN_METEO_URL` in `config.py` to fetch historical weather data based on `LATITUDE`/`LONGITUDE`.
+```bash
+python -m energy_forecast.predict.predict_future
+```
+
+Trains/caches a baseline model, fetches the 24h weather forecast, and prints the predicted hourly consumption. See `docs/README.md` for details.
 
 ## Configuration
 
-All parameters live in `app/config.py`:
+All parameters live in `src/energy_forecast/config.py`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -114,11 +149,13 @@ All parameters live in `app/config.py`:
 
 ## MLOps Pipeline
 
-1. **Ingestion** — `fetch_energy_dk.py` downloads raw data (current).
-2. **Weather ingestion** — fetch weather data from Open-Meteo (planned).
-3. **Feature engineering** — combine consumption + weather, create time features (hour, day, season).
-4. **Training** — train a time-series forecasting model (regression).
-5. **Monitoring** — detect data drift (seasonality, holidays, regulation).
+1. **Ingestion** — `energy_forecast.data.fetch_energy_dk` downloads raw consumption data.
+2. **Weather ingestion** — `energy_forecast.data.fetch_weather` downloads weather data from Open-Meteo.
+3. **Feature engineering** — `energy_forecast.data.merge_data` combines both, adding time/holiday/lag features.
+4. **Daily orchestration** — `energy_forecast.orchestration.daily_pipeline` runs steps 1–3 in sequence.
+5. **Training** — `energy_forecast.models.train_baseline` / `train_deep_learning` train forecasting models.
+6. **Prediction** — `energy_forecast.predict.predict_future` forecasts the next 24h using the latest data.
+7. **Monitoring** — `energy_forecast.monitoring.evaluate_model` + `check_trigger` detect drift and auto-retrain.
 
 ## Troubleshooting
 

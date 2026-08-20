@@ -1,0 +1,12 @@
+deployments:
+  - name: energy-forecast-daily
+    entrypoint: src/energy_forecast/orchestration/prefect_flow.py:energy_forecast_daily_flow
+    work_pool:
+      name: process-pool
+      work_queue_name: default
+    schedule:
+      cron: "0 1 * * *"
+      timezone: "Europe/Copenhagen"
+    tags:
+      - daily
+      - energy-forecast

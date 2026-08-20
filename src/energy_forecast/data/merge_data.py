@@ -1,10 +1,7 @@
 import pandas as pd
-from pathlib import Path
 import holidays
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RAW_DIR = PROJECT_ROOT / "data" / "raw"
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+from energy_forecast.config import RAW_DIR, PROCESSED_DIR
 
 
 def load_consumption():

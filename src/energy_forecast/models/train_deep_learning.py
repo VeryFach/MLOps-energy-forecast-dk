@@ -1,15 +1,12 @@
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import ModelCheckpoint
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-MODELS_DIR = PROJECT_ROOT / "models"
+from energy_forecast.config import PROCESSED_DIR, MODELS_DIR
 
 TARGET = "consumption_mw"
 FEATURES = [

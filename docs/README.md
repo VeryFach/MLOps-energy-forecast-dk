@@ -4,31 +4,66 @@ This guide explains how to run the full data pipeline and how to refresh the CSV
 
 ## Overview
 
-The pipeline consists of three scripts in `app/`:
+The project uses a standard MLOps `src/` layout. The Python package is `energy_forecast`, organized by responsibility:
 
-| Script | Purpose | Output |
+```
+src/energy_forecast/
+├── config.py          # Parameters & shared paths
+├── data/              # Ingestion & feature engineering
+│   ├── fetch_energy_dk.py
+│   ├── fetch_weather.py
+│   └── merge_data.py
+├── models/            # Training
+│   ├── train_baseline.py
+│   └── train_deep_learning.py
+├── predict/           # Inference
+│   └── predict_future.py
+├── monitoring/        # Evaluation & retraining trigger
+│   ├── evaluate_model.py
+│   └── check_trigger.py
+└── orchestration/     # Pipeline runner & scheduling
+    ├── daily_pipeline.py
+    └── prefect_flow.py
+```
+
+| Module | Purpose | Output |
 |--------|---------|--------|
-| `fetch_energy_dk.py` | Download hourly electricity consumption (MW) for DK1 & DK2 | `data/raw/consumption.csv` |
-| `fetch_weather.py` | Download hourly weather for Copenhagen | `data/raw/weather.csv` |
-| `merge_data.py` | Combine both datasets, add time/holiday/lag features | `data/processed/merged_data.csv` |
+| `energy_forecast.data.fetch_energy_dk` | Download hourly electricity consumption (MW) for DK1 & DK2 | `data/raw/consumption.csv` |
+| `energy_forecast.data.fetch_weather` | Download hourly weather for Copenhagen | `data/raw/weather.csv` |
+| `energy_forecast.data.merge_data` | Combine both datasets, add time/holiday/lag features | `data/processed/merged_data.csv` |
+| `energy_forecast.orchestration.daily_pipeline` | Run the three data scripts in sequence (fetch → fetch → merge) | — |
+| `energy_forecast.predict.predict_future` | Predict the next 24h of consumption from the latest data | console output |
+| `energy_forecast.monitoring.evaluate_model` | Compute yesterday's MAPE and log it | `logs/mape_history.csv` |
+| `energy_forecast.monitoring.check_trigger` | Retrain if MAPE > 5% for 3 consecutive days | — |
+| `energy_forecast.orchestration.prefect_flow` | Prefect flow: pipeline + evaluate + trigger | — |
 
 ## Requirements
 
-Install dependencies (from the project root):
+Install the package (from the project root):
 
 ```bash
-pip install requests pandas holidays
+pip install -e .
 ```
+
+Optional extras: `pip install -e ".[deep-learning,prefect]"`.
 
 ## Running the pipeline
 
-Run the scripts in order. From the project root:
+Run the modules in order. From the project root:
 
 ```bash
-python app/fetch_energy_dk.py
-python app/fetch_weather.py
-python app/merge_data.py
+python -m energy_forecast.data.fetch_energy_dk
+python -m energy_forecast.data.fetch_weather
+python -m energy_forecast.data.merge_data
 ```
+
+Or run everything at once with the orchestrator:
+
+```bash
+python -m energy_forecast.orchestration.daily_pipeline
+```
+
+It executes the three scripts sequentially and stops if any of them fails (non-zero exit code).
 
 Expected output:
 
@@ -38,9 +73,47 @@ Saved 14328 records to ...\data\raw\weather.csv
 Saved 5000 records to ...\data\processed\merged_data.csv
 ```
 
+### Predicting the next 24 hours
+
+After the pipeline has refreshed the data, forecast consumption for the next 24 hours:
+
+```bash
+python -m energy_forecast.predict.predict_future
+```
+
+This loads the trained baseline model (trains and caches it to `models/baseline_model.joblib` on first run), fetches the upcoming 24h weather forecast from Open-Meteo, builds the lag/calendar features from the latest history, and prints the predicted hourly consumption. Execution completes in well under 5 seconds.
+
+### Monitoring & retraining
+
+Evaluate the model against yesterday's actual data and log the MAPE:
+
+```bash
+python -m energy_forecast.monitoring.evaluate_model
+```
+
+Check whether the retraining trigger should fire (MAPE > 5% for 3 consecutive days → reruns `train_baseline`):
+
+```bash
+python -m energy_forecast.monitoring.check_trigger
+```
+
+### Scheduled runs (Prefect)
+
+The Prefect flow wraps pipeline → evaluate → trigger and can serve itself with a daily cron at 01:00:
+
+```bash
+python -m energy_forecast.orchestration.prefect_flow --serve
+```
+
+Alternatively, register the Windows Task Scheduler task that runs the daily pipeline at 01:00:
+
+```bash
+python -m energy_forecast.orchestration.daily_pipeline --setup-task
+```
+
 ## How to update the CSV data
 
-To fetch new/updated data, simply re-run the scripts above. They overwrite the existing CSVs.
+To fetch new/updated data, simply re-run the modules above. They overwrite the existing CSVs.
 
 - **Consumption** — fetches records from `DATA_START_DATE` up to `FETCH_LIMIT` records, so newer data is included on each run.
 - **Weather** — always fetches from `HISTORY_START_DATE` to *today* (`end_date = today`), so re-running captures the latest days.
@@ -48,7 +121,7 @@ To fetch new/updated data, simply re-run the scripts above. They overwrite the e
 
 ### Configuring the data window
 
-All parameters live in `app/config.py`:
+All parameters live in `src/energy_forecast/config.py`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -58,13 +131,19 @@ All parameters live in `app/config.py`:
 
 ### Update procedure
 
-1. (Optional) Change the date range in `app/config.py`.
-2. Run the fetch scripts, then the merge script:
+1. (Optional) Change the date range in `src/energy_forecast/config.py`.
+2. Run the fetch modules, then the merge module:
 
 ```bash
-python app/fetch_energy_dk.py
-python app/fetch_weather.py
-python app/merge_data.py
+python -m energy_forecast.data.fetch_energy_dk
+python -m energy_forecast.data.fetch_weather
+python -m energy_forecast.data.merge_data
+```
+
+or just:
+
+```bash
+python -m energy_forecast.orchestration.daily_pipeline
 ```
 
 3. Verify the output files:
@@ -112,3 +191,4 @@ python -c "import pandas as pd; print(pd.read_csv('data/processed/merged_data.cs
 - **Error 429 (rate limit)** — Energi Data Service limits request frequency. Wait a few minutes and rerun.
 - **Error 404** — The dataset may have been renamed. Check the catalog at `https://api.energidataservice.dk/meta/dataset`.
 - **Missing lag values (NaN)** — The first 168 hours have no history, so `consumption_lag_*` are NaN. These rows can be dropped before training.
+- **`ModuleNotFoundError: energy_forecast`** — reinstall the package: `pip install -e .`

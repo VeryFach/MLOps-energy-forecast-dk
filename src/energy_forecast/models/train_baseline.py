@@ -1,10 +1,11 @@
 import pandas as pd
-from pathlib import Path
+from joblib import dump
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+from energy_forecast.config import PROCESSED_DIR, MODELS_DIR
+
+MODEL_PATH = MODELS_DIR / "baseline_model.joblib"
 
 TARGET = "consumption_mw"
 FEATURES = [
@@ -43,11 +44,15 @@ def main():
     rmse = mean_squared_error(y_test, y_pred) ** 0.5
     mape = mean_absolute_percentage_error(y_test, y_pred) * 100
 
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    dump(model, MODEL_PATH)
+
     print(f"Train rows: {len(train)}, Test rows: {len(test)}")
     print(f"Test range: {test['datetime'].min()} s/d {test['datetime'].max()}")
     print(f"RMSE: {rmse:.2f} MW")
     print(f"MAPE: {mape:.2f}%")
     print(f"MAE: {mean_absolute_error(y_test, y_pred):.2f} MW")
+    print(f"Model disimpan ke {MODEL_PATH}")
 
 
 if __name__ == "__main__":

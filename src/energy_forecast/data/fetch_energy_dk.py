@@ -1,10 +1,7 @@
 import requests
 import pandas as pd
-from pathlib import Path
 
-from config import ENERGIDATA_DATASET_URL, DATA_START_DATE, FETCH_LIMIT, CONSUMPTION_FIELD
-
-RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
+from energy_forecast.config import RAW_DIR, ENERGIDATA_DATASET_URL, DATA_START_DATE, FETCH_LIMIT, CONSUMPTION_FIELD
 
 
 def main():
