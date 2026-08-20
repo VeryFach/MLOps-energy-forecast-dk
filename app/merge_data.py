@@ -1,0 +1,64 @@
+import pandas as pd
+from pathlib import Path
+import holidays
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RAW_DIR = PROJECT_ROOT / "data" / "raw"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+
+
+def load_consumption():
+    df = pd.read_csv(RAW_DIR / "consumption.csv")
+    df["datetime"] = pd.to_datetime(df["TimeDK"])
+    national = df.groupby("datetime")["ConsumptionMW"].sum().reset_index()
+    national.rename(columns={"ConsumptionMW": "consumption_mw"}, inplace=True)
+    return national
+
+
+def load_weather():
+    df = pd.read_csv(RAW_DIR / "weather.csv")
+    df["datetime"] = pd.to_datetime(df["time"])
+    df = df[["datetime", "temperature_2m", "relativehumidity_2m", "windspeed_10m"]]
+    return df
+
+
+def add_time_features(df):
+    df["hour"] = df["datetime"].dt.hour
+    df["day_of_week"] = df["datetime"].dt.dayofweek
+    df["month"] = df["datetime"].dt.month
+    df["is_weekend"] = df["day_of_week"].isin([5, 6]).astype(int)
+    return df
+
+
+def add_holiday_feature(df):
+    dk_holidays = holidays.Denmark(years=range(df["datetime"].dt.year.min(), df["datetime"].dt.year.max() + 1))
+    df["is_holiday_dk"] = df["datetime"].dt.date.isin(dk_holidays).astype(int)
+    return df
+
+
+def add_lag_features(df):
+    df = df.sort_values("datetime").reset_index(drop=True)
+    df["consumption_lag_24h"] = df["consumption_mw"].shift(24)
+    df["consumption_lag_48h"] = df["consumption_mw"].shift(48)
+    df["consumption_lag_168h"] = df["consumption_mw"].shift(168)
+    return df
+
+
+def main():
+    consumption = load_consumption()
+    weather = load_weather()
+
+    merged = pd.merge(consumption, weather, on="datetime", how="inner")
+    merged = add_time_features(merged)
+    merged = add_holiday_feature(merged)
+    merged = add_lag_features(merged)
+
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PROCESSED_DIR / "merged_data.csv"
+    merged.to_csv(out_path, index=False)
+
+    print(f"Saved {len(merged)} records to {out_path}")
+
+
+if __name__ == "__main__":
+    main()
