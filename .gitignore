@@ -15,9 +15,15 @@ __pycache__/
 data/raw/
 data/processed/
 
+# Trained models (reproducible via training scripts)
+models/
+
 # IDE / OS
 .idea/
 .vscode/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Analist Personal Insight
+analyst/
