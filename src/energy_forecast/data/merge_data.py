@@ -1,7 +1,17 @@
+import io
+
 import pandas as pd
 import holidays
+from minio import Minio
 
-from energy_forecast.config import RAW_DIR, PROCESSED_DIR
+from energy_forecast.config import (
+    MINIO_ACCESS_KEY,
+    MINIO_BUCKET,
+    MINIO_ENDPOINT,
+    MINIO_SECRET_KEY,
+    PROCESSED_DIR,
+    RAW_DIR,
+)
 
 
 def load_consumption():
@@ -41,6 +51,57 @@ def add_lag_features(df):
     return df
 
 
+def save_to_minio(df: pd.DataFrame) -> None:
+    client = Minio(
+        MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        secure=False,
+    )
+    if not client.bucket_exists(MINIO_BUCKET):
+        client.make_bucket(MINIO_BUCKET)
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    csv_buffer = io.BytesIO(csv_bytes)
+    client.put_object(
+        MINIO_BUCKET,
+        "processed/merged_data.csv",
+        csv_buffer,
+        length=len(csv_bytes),
+        content_type="text/csv",
+    )
+    print(f"Uploaded merged_data.csv to MinIO bucket '{MINIO_BUCKET}'")
+
+
+def register_feast_features(df: pd.DataFrame) -> None:
+    try:
+        from feast import Entity, FeatureStore, Field, RepoSource
+        from feast.types import Float32, Int64, String
+
+        entity = Entity(name="datetime", join_keys=["datetime"])
+
+        source = RepoSource(
+            path=str(PROCESSED_DIR / "merged_data.csv"),
+            timestamp_field="datetime",
+        )
+
+        feature_view_fields = [
+            Field(name="consumption_mw", dtype=Float32),
+            Field(name="temperature_2m", dtype=Float32),
+            Field(name="relativehumidity_2m", dtype=Float32),
+            Field(name="windspeed_10m", dtype=Float32),
+            Field(name="hour", dtype=Int64),
+            Field(name="day_of_week", dtype=Int64),
+            Field(name="month", dtype=Int64),
+            Field(name="is_weekend", dtype=Int64),
+            Field(name="is_holiday_dk", dtype=Int64),
+        ]
+
+        print("Feast feature store registration skipped (configure Feast repo to enable).")
+    except ImportError:
+        print("Feast not installed. Skipping feature store registration.")
+
+
 def main():
     consumption = load_consumption()
     weather = load_weather()
@@ -53,8 +114,10 @@ def main():
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     out_path = PROCESSED_DIR / "merged_data.csv"
     merged.to_csv(out_path, index=False)
-
     print(f"Saved {len(merged)} records to {out_path}")
+
+    save_to_minio(merged)
+    register_feast_features(merged)
 
 
 if __name__ == "__main__":
