@@ -15,9 +15,28 @@ __pycache__/
 data/raw/
 data/processed/
 
+# Trained models (reproducible via training scripts)
+models/
+
+# Logs & monitoring artifacts
+logs/
+
+# Prefect
+.prefect/
+*.pid
+
 # IDE / OS
 .idea/
 .vscode/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Analyst personal insight (notebook eksplorasi)
+analyst/
+
+# image
+image/
+
+# Personal notes (docs/info.md)
+/docs/info.md

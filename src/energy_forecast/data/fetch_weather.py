@@ -1,17 +1,15 @@
 import requests
 import pandas as pd
 from datetime import date
-from pathlib import Path
 
-from config import (
+from energy_forecast.config import (
+    RAW_DIR,
     LATITUDE,
     LONGITUDE,
     OPEN_METEO_ARCHIVE_URL,
     HISTORY_START_DATE,
     WEATHER_VARIABLES,
 )
-
-RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
 
 
 def main():
