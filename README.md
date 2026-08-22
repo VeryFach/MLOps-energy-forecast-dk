@@ -6,30 +6,40 @@ Predict electricity consumption (MW) in Denmark using hourly time-series data fr
 
 ```
 energy-forecast-dk/
-├── src/energy_forecast/     # Python package (installable via pip install -e .)
-│   ├── config.py            # Parameters: country, coordinates, API URLs, start date, paths
-│   ├── data/                # Ingestion & feature engineering
+├── src/energy_forecast/          # Python package (installable via pip install -e .)
+│   ├── config.py                 # Parameters: country, coordinates, API URLs, paths, MinIO/MLflow config
+│   ├── data/                     # Ingestion, feature engineering & MinIO upload
 │   │   ├── fetch_energy_dk.py
 │   │   ├── fetch_weather.py
 │   │   └── merge_data.py
-│   ├── models/              # Training
+│   ├── models/                   # Training with MLflow tracking
 │   │   ├── train_baseline.py
 │   │   └── train_deep_learning.py
-│   ├── predict/             # Inference
+│   ├── predict/                  # Inference
 │   │   └── predict_future.py
-│   ├── monitoring/          # Evaluation & retraining trigger
+│   ├── monitoring/               # Evaluation, drift detection & retraining trigger
 │   │   ├── evaluate_model.py
+│   │   ├── detect_drift.py
 │   │   └── check_trigger.py
-│   └── orchestration/       # Pipeline runner & scheduling
+│   ├── serving/                  # FastAPI model serving
+│   │   └── serve_model.py
+│   └── orchestration/            # Pipeline runner
 │       ├── daily_pipeline.py
 │       └── prefect_flow.py
+├── dags/                         # Apache Airflow DAGs
+│   └── energy_forecast_dag.py
+├── monitoring/                   # Prometheus & Grafana configuration
+│   ├── prometheus.yml
+│   └── grafana/
 ├── data/
-│   ├── raw/                 # Raw data (git-ignored, created by the scripts)
-│   └── processed/           # Merged feature table (git-ignored)
-├── models/                  # Trained models (git-ignored)
-├── logs/                    # Monitoring logs (git-ignored)
+│   ├── raw/                      # Raw data (git-ignored, created by the scripts)
+│   └── processed/                # Merged feature table (git-ignored)
+├── models/                       # Trained models (git-ignored)
+├── logs/                         # Monitoring & drift logs (git-ignored)
 ├── docs/
-│   └── README.md            # Pipeline & usage documentation
+│   └── README.md                 # Detailed pipeline & usage documentation
+├── Dockerfile                    # API container image
+├── docker-compose.yml            # Full stack: API, MLflow, Prometheus, Grafana
 ├── pyproject.toml
 ├── .gitignore
 └── README.md
@@ -42,13 +52,14 @@ energy-forecast-dk/
 | [Energi Data Service](https://www.energidataservice.dk/) | Hourly electricity consumption (MW) | None |
 | [Open-Meteo](https://open-meteo.com/) | Weather: temperature, humidity, wind | None |
 
-> Note: The legacy `ConsumptionDE35` dataset is no longer available. The script uses `GenerationProdTypeExchange` (column `GrossCon` = gross consumption in MW) for DK1 and DK2.
-
 ## Prerequisites
 
 - Python 3.10+
 - [Git](https://git-scm.com/)
 - Internet access (to reach the APIs)
+- Docker & Docker Compose (for full MLOps stack)
+- MinIO running locally on port 9000 (for object storage)
+- Apache Airflow (for DAG-based orchestration)
 
 ## Setup
 
@@ -86,7 +97,21 @@ Activate the environment:
 pip install -e .
 ```
 
-Optional extras: `pip install -e ".[deep-learning,prefect]"`.
+Optional extras:
+
+```bash
+# Deep learning (TensorFlow)
+pip install -e ".[deep-learning]"
+
+# FastAPI serving
+pip install -e ".[serving]"
+
+# Apache Airflow
+pip install -e ".[airflow]"
+
+# All optional dependencies
+pip install -e ".[all]"
+```
 
 ## Running
 
@@ -106,32 +131,63 @@ python -m energy_forecast.data.fetch_weather
 python -m energy_forecast.data.merge_data
 ```
 
-1. Call the Energi Data Service API with the `start` parameter (from `config.py`) and `limit=10000`.
-2. Convert the JSON response into a pandas DataFrame.
-3. Save the result to `data/raw/consumption.csv`.
+Data is saved locally to `data/raw/` and `data/processed/`, and also uploaded to **MinIO** object storage.
 
-Expected output:
+### Drift detection
 
-```
-Saved 10000 records to D:\...\energy-forecast-dk\data\raw\consumption.csv
-```
-
-Structure of `data/raw/consumption.csv`:
-
-| Column | Description |
-|--------|-------------|
-| `TimeUTC` | Timestamp in UTC |
-| `TimeDK` | Danish local time |
-| `PriceArea` | Price area: DK1 (West) / DK2 (East) |
-| `ConsumptionMW` | Electricity consumption in MW |
-
-### Predicting the next 24 hours
+Run the 5-signal drift detection:
 
 ```bash
-python -m energy_forecast.predict.predict_future
+python -m energy_forecast.monitoring.detect_drift
 ```
 
-Trains/caches a baseline model, fetches the 24h weather forecast, and prints the predicted hourly consumption. See `docs/README.md` for details.
+Signals: PSI (peak hours), night/day ratio, mean consumption shift, peak hour shift, z-score.
+
+### Training with MLflow
+
+```bash
+python -m energy_forecast.models.train_baseline
+python -m energy_forecast.models.train_deep_learning
+```
+
+Both scripts log metrics (RMSE, MAPE) and register models to the **MLflow Registry**.
+
+### Model serving (FastAPI)
+
+```bash
+python -m uvicorn energy_forecast.serving.serve_model:app --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+- `GET /health` — health check
+- `POST /predict` — predict next N hours of consumption
+
+Swagger docs available at `http://localhost:8000/docs`.
+
+### Scheduled runs (Airflow)
+
+Place the DAG file at `dags/energy_forecast_dag.py` and trigger via Airflow UI or CLI:
+
+```bash
+airflow dags list
+airflow dags test energy_forecast_daily
+```
+
+## Docker Deployment
+
+Run the full MLOps stack (API + MLflow + Prometheus + Grafana):
+
+```bash
+docker-compose up -d
+```
+
+Services:
+| Service | Port | Description |
+|---------|------|-------------|
+| API | 8000 | FastAPI prediction service |
+| MLflow | 5000 | Experiment tracking & model registry |
+| Prometheus | 9090 | Metrics scraping |
+| Grafana | 3000 | Dashboards (admin/admin) |
 
 ## Configuration
 
@@ -145,20 +201,27 @@ All parameters live in `src/energy_forecast/config.py`:
 | `ENERGIDATA_DATASET_URL` | Energi Data Service API URL | ... |
 | `DATA_START_DATE` | Start date for fetching data | `2026-01-01` |
 | `FETCH_LIMIT` | Maximum number of records | `10000` |
-| `REFRESH_INTERVAL_MINUTES` | Update interval (near-real-time) | `5` |
+| `MINIO_ENDPOINT` | MinIO object storage URL | `http://localhost:9000` |
+| `MLFLOW_TRACKING_URI` | MLflow tracking server URL | `http://localhost:5000` |
 
 ## MLOps Pipeline
 
-1. **Ingestion** — `energy_forecast.data.fetch_energy_dk` downloads raw consumption data.
+1. **Ingestion** — `energy_forecast.data.fetch_energy_dk` downloads raw consumption data and uploads to MinIO.
 2. **Weather ingestion** — `energy_forecast.data.fetch_weather` downloads weather data from Open-Meteo.
-3. **Feature engineering** — `energy_forecast.data.merge_data` combines both, adding time/holiday/lag features.
-4. **Daily orchestration** — `energy_forecast.orchestration.daily_pipeline` runs steps 1–3 in sequence.
-5. **Training** — `energy_forecast.models.train_baseline` / `train_deep_learning` train forecasting models.
-6. **Prediction** — `energy_forecast.predict.predict_future` forecasts the next 24h using the latest data.
-7. **Monitoring** — `energy_forecast.monitoring.evaluate_model` + `check_trigger` detect drift and auto-retrain.
+3. **Feature engineering** — `energy_forecast.data.merge_data` combines both, adds time/holiday/lag features, uploads to MinIO.
+4. **Drift detection** — `energy_forecast.monitoring.detect_drift` calculates 5 drift signals.
+5. **Daily orchestration** — `energy_forecast.orchestration.daily_pipeline` or **Airflow DAG** runs the full pipeline.
+6. **Training** — `energy_forecast.models.train_baseline` / `train_deep_learning` train models with MLflow tracking.
+7. **Prediction** — `energy_forecast.predict.predict_future` forecasts the next 24h.
+8. **Monitoring** — `evaluate_model` + `check_trigger` detect drift and auto-retrain (MAPE > 5% OR drift signals exceeded).
+9. **Serving** — FastAPI serves predictions via REST API, containerized with Docker.
 
 ## Troubleshooting
 
 **Error 429 (Rate limit)** — Energi Data Service limits request frequency. Wait a few minutes and rerun.
 
 **Error 404** — The dataset may have been renamed or removed. Check the dataset catalog at `https://api.energidataservice.dk/meta/dataset`.
+
+**MinIO connection refused** — Ensure MinIO is running locally on port 9000.
+
+**MLflow connection refused** — Ensure MLflow server is running: `mlflow server --port 5000`.
