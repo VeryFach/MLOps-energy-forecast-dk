@@ -48,7 +48,11 @@ def signal_peak_hour_psi(df: pd.DataFrame) -> dict:
         return {"signal": "peak_hour_psi", "value": 0.0, "drifted": False}
 
     psi = calculate_psi(ref_peak, cur_peak)
-    return {"signal": "peak_hour_psi", "value": round(psi, 4), "drifted": psi > DRIFT_PSI_THRESHOLD}
+    return {
+        "signal": "peak_hour_psi",
+        "value": round(psi, 4),
+        "drifted": psi > DRIFT_PSI_THRESHOLD,
+    }
 
 
 def signal_night_day_ratio(df: pd.DataFrame) -> dict:
@@ -71,7 +75,11 @@ def signal_mean_consumption_shift(df: pd.DataFrame) -> dict:
         return {"signal": "mean_consumption_shift", "value": 0.0, "drifted": False}
 
     shift = recent.mean() - historical.mean()
-    return {"signal": "mean_consumption_shift", "value": round(shift, 4), "drifted": abs(shift) > historical.std() * 0.5}
+    return {
+        "signal": "mean_consumption_shift",
+        "value": round(shift, 4),
+        "drifted": abs(shift) > historical.std() * 0.5,
+    }
 
 
 def signal_peak_hour_shift(df: pd.DataFrame) -> dict:
@@ -85,7 +93,11 @@ def signal_peak_hour_shift(df: pd.DataFrame) -> dict:
     hist_peak_hour = historical.groupby("hour")["consumption_mw"].mean().idxmax()
 
     shift = abs(recent_peak_hour - hist_peak_hour)
-    return {"signal": "peak_hour_shift", "value": shift, "drifted": shift >= DRIFT_PEAK_HOUR_SHIFT_THRESHOLD}
+    return {
+        "signal": "peak_hour_shift",
+        "value": shift,
+        "drifted": shift >= DRIFT_PEAK_HOUR_SHIFT_THRESHOLD,
+    }
 
 
 def signal_consumption_zscore(df: pd.DataFrame) -> dict:
@@ -97,7 +109,11 @@ def signal_consumption_zscore(df: pd.DataFrame) -> dict:
         return {"signal": "consumption_zscore", "value": 0.0, "drifted": False}
 
     zscore = abs(recent_mean - historical_mean) / historical_std
-    return {"signal": "consumption_zscore", "value": round(zscore, 4), "drifted": zscore > DRIFT_CONSUMPTION_ZSCORE_THRESHOLD}
+    return {
+        "signal": "consumption_zscore",
+        "value": round(zscore, 4),
+        "drifted": zscore > DRIFT_CONSUMPTION_ZSCORE_THRESHOLD,
+    }
 
 
 def run_drift_detection() -> list[dict]:
@@ -118,12 +134,14 @@ def save_drift_log(signals: list[dict]) -> pd.DataFrame:
 
     rows = []
     for s in signals:
-        rows.append({
-            "date": today,
-            "signal": s["signal"],
-            "value": s["value"],
-            "drifted": s["drifted"],
-        })
+        rows.append(
+            {
+                "date": today,
+                "signal": s["signal"],
+                "value": s["value"],
+                "drifted": s["drifted"],
+            }
+        )
 
     new_df = pd.DataFrame(rows)
 

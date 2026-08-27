@@ -17,7 +17,9 @@ def main():
             sys.exit(result.returncode)
 
     print("Daily pipeline completed.")
-    print("Note: For scheduled execution, use the Airflow DAG at dags/energy_forecast_dag.py")
+    print(
+        "Note: For scheduled execution, use the Airflow DAG at dags/energy_forecast_dag.py"
+    )
 
 
 if __name__ == "__main__":

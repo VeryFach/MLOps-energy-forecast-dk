@@ -74,11 +74,15 @@ def predict_future(hours=24):
     model = load_model()
 
     last_ts = df["datetime"].iloc[-1]
-    future = pd.date_range(start=last_ts + pd.Timedelta(hours=1), periods=hours, freq="h")
+    future = pd.date_range(
+        start=last_ts + pd.Timedelta(hours=1), periods=hours, freq="h"
+    )
 
     weather = fetch_weather(future[0], future[-1])
     weather["datetime"] = pd.to_datetime(weather["time"])
-    weather = weather.set_index("datetime")[["temperature_2m", "relativehumidity_2m", "windspeed_10m"]]
+    weather = weather.set_index("datetime")[
+        ["temperature_2m", "relativehumidity_2m", "windspeed_10m"]
+    ]
 
     hist = df.set_index("datetime")["consumption_mw"]
 
@@ -92,19 +96,31 @@ def predict_future(hours=24):
     frame["month"] = frame.index.month
     frame["is_weekend"] = frame["day_of_week"].isin([5, 6]).astype(int)
 
-    dk_holidays = holidays.Denmark(years=range(frame.index.year.min(), frame.index.year.max() + 1))
-    frame["is_holiday_dk"] = pd.Series(frame.index.date).isin(dk_holidays).astype(int).values
+    dk_holidays = holidays.Denmark(
+        years=range(frame.index.year.min(), frame.index.year.max() + 1)
+    )
+    frame["is_holiday_dk"] = (
+        pd.Series(frame.index.date).isin(dk_holidays).astype(int).values
+    )
 
-    frame["consumption_lag_24h"] = hist.reindex(frame.index - pd.Timedelta(hours=24), method="ffill").values
-    frame["consumption_lag_48h"] = hist.reindex(frame.index - pd.Timedelta(hours=48), method="ffill").values
-    frame["consumption_lag_168h"] = hist.reindex(frame.index - pd.Timedelta(hours=168), method="ffill").values
+    frame["consumption_lag_24h"] = hist.reindex(
+        frame.index - pd.Timedelta(hours=24), method="ffill"
+    ).values
+    frame["consumption_lag_48h"] = hist.reindex(
+        frame.index - pd.Timedelta(hours=48), method="ffill"
+    ).values
+    frame["consumption_lag_168h"] = hist.reindex(
+        frame.index - pd.Timedelta(hours=168), method="ffill"
+    ).values
 
     pred = model.predict(frame[FEATURES])
 
-    result = pd.DataFrame({
-        "datetime": frame.index,
-        "consumption_mw": pred,
-    })
+    result = pd.DataFrame(
+        {
+            "datetime": frame.index,
+            "consumption_mw": pred,
+        }
+    )
     return result
 
 
@@ -113,7 +129,9 @@ def main():
     result = predict_future(hours=24)
     elapsed = time.perf_counter() - start
 
-    print(f"Prediksi 24 jam ke depan (berdasarkan data terakhir {result['datetime'].iloc[0] - pd.Timedelta(hours=1)}):")
+    print(
+        f"Prediksi 24 jam ke depan (berdasarkan data terakhir {result['datetime'].iloc[0] - pd.Timedelta(hours=1)}):"
+    )
     print(result.to_string(index=False))
     print(f"Waktu eksekusi: {elapsed:.2f} detik")
     assert elapsed < 5, "Waktu eksekusi melebihi 5 detik!"

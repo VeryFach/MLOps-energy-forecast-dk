@@ -51,8 +51,11 @@ def load_model():
             logger.info(f"Loaded model {model_name} version {latest_version.version}")
             return latest_version.version
         else:
-            logger.warning("No model versions found in MLflow Registry. Using local fallback.")
+            logger.warning(
+                "No model versions found in MLflow Registry. Using local fallback."
+            )
             from joblib import load as joblib_load
+
             local_path = MODELS_DIR / "baseline_model.joblib"
             if local_path.exists():
                 model = joblib_load(local_path)
@@ -63,6 +66,7 @@ def load_model():
         logger.error(f"Failed to load model from MLflow: {e}")
         try:
             from joblib import load as joblib_load
+
             local_path = MODELS_DIR / "baseline_model.joblib"
             model = joblib_load(local_path)
             logger.info(f"Fallback: loaded local model from {local_path}")
@@ -114,7 +118,9 @@ async def predict(request: PredictionRequest):
     ]
 
     last_ts = df["datetime"].iloc[-1]
-    future = pd.date_range(start=last_ts + pd.Timedelta(hours=1), periods=request.hours, freq="h")
+    future = pd.date_range(
+        start=last_ts + pd.Timedelta(hours=1), periods=request.hours, freq="h"
+    )
 
     frame = pd.DataFrame(index=future)
     frame["hour"] = frame.index.hour
@@ -123,9 +129,15 @@ async def predict(request: PredictionRequest):
     frame["is_weekend"] = frame["day_of_week"].isin([5, 6]).astype(int)
 
     hist = df.set_index("datetime")["consumption_mw"]
-    frame["consumption_lag_24h"] = hist.reindex(frame.index - pd.Timedelta(hours=24), method="ffill").values
-    frame["consumption_lag_48h"] = hist.reindex(frame.index - pd.Timedelta(hours=48), method="ffill").values
-    frame["consumption_lag_168h"] = hist.reindex(frame.index - pd.Timedelta(hours=168), method="ffill").values
+    frame["consumption_lag_24h"] = hist.reindex(
+        frame.index - pd.Timedelta(hours=24), method="ffill"
+    ).values
+    frame["consumption_lag_48h"] = hist.reindex(
+        frame.index - pd.Timedelta(hours=48), method="ffill"
+    ).values
+    frame["consumption_lag_168h"] = hist.reindex(
+        frame.index - pd.Timedelta(hours=168), method="ffill"
+    ).values
 
     frame["temperature_2m"] = df["temperature_2m"].iloc[-1]
     frame["relativehumidity_2m"] = df["relativehumidity_2m"].iloc[-1]
@@ -148,4 +160,5 @@ async def predict(request: PredictionRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -38,7 +38,9 @@ def add_time_features(df):
 
 
 def add_holiday_feature(df):
-    dk_holidays = holidays.Denmark(years=range(df["datetime"].dt.year.min(), df["datetime"].dt.year.max() + 1))
+    dk_holidays = holidays.Denmark(
+        years=range(df["datetime"].dt.year.min(), df["datetime"].dt.year.max() + 1)
+    )
     df["is_holiday_dk"] = df["datetime"].dt.date.isin(dk_holidays).astype(int)
     return df
 
@@ -75,8 +77,8 @@ def save_to_minio(df: pd.DataFrame) -> None:
 
 def register_feast_features(df: pd.DataFrame) -> None:
     try:
-        from feast import Entity, Field, RepoSource  # noqa: F401
-        from feast.types import Float32, Int64  # noqa: F401
+        from feast import Entity, Field, RepoSource
+        from feast.types import Float32, Int64
 
         entity = Entity(name="datetime", join_keys=["datetime"])  # noqa: F841
 
@@ -97,7 +99,9 @@ def register_feast_features(df: pd.DataFrame) -> None:
             Field(name="is_holiday_dk", dtype=Int64),
         ]
 
-        print("Feast feature store registration skipped (configure Feast repo to enable).")
+        print(
+            "Feast feature store registration skipped (configure Feast repo to enable)."
+        )
     except ImportError:
         print("Feast not installed. Skipping feature store registration.")
 

@@ -16,7 +16,9 @@ LONGITUDE = 12.5683
 
 ENERGIDATA_URL = "https://api.energidataservice.dk/v1/datastore_search"
 ENERGIDATA_RESOURCE = "consumptionde35hour"
-ENERGIDATA_DATASET_URL = "https://api.energidataservice.dk/dataset/GenerationProdTypeExchange"
+ENERGIDATA_DATASET_URL = (
+    "https://api.energidataservice.dk/dataset/GenerationProdTypeExchange"
+)
 ENERGIDATA_DATASET_NAME = "GenerationProdTypeExchange"
 CONSUMPTION_FIELD = "GrossCon"
 

@@ -89,9 +89,7 @@ def check_versions() -> list[str]:
         CANONICAL_VERSION_FILE, CANONICAL_VERSION_PATTERN
     )
     if canonical_version is None:
-        errors.append(
-            "FAIL: Cannot find project version in pyproject.toml"
-        )
+        errors.append("FAIL: Cannot find project version in pyproject.toml")
         return errors
 
     print(f"  Project version (pyproject.toml): {canonical_version}")
@@ -102,14 +100,12 @@ def check_versions() -> list[str]:
         r'version\s*=\s*"(\d+\.\d+\.\d+)"',
     )
     if api_version is None:
-        errors.append(
-            "WARN: Cannot find FastAPI version in serve_model.py"
-        )
+        errors.append("WARN: Cannot find FastAPI version in serve_model.py")
     elif api_version != canonical_version:
         errors.append(
             f"FAIL: FastAPI version ({api_version}) != project version ({canonical_version})\n"
             f"       File: src/energy_forecast/serving/serve_model.py:18\n"
-            f"       Fix:  Update version=\"{canonical_version}\" to match pyproject.toml"
+            f'       Fix:  Update version="{canonical_version}" to match pyproject.toml'
         )
     else:
         print(f"  FastAPI version (serve_model.py): {api_version} [OK]")
@@ -153,9 +149,7 @@ def check_versions() -> list[str]:
     # 5. Check __init__.py exists
     init_file = PROJECT_ROOT / "src" / "energy_forecast" / "__init__.py"
     if not init_file.exists():
-        errors.append(
-            "WARN: Missing src/energy_forecast/__init__.py"
-        )
+        errors.append("WARN: Missing src/energy_forecast/__init__.py")
     else:
         print("  Package __init__.py: [OK]")
 

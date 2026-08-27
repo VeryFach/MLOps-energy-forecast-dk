@@ -23,7 +23,9 @@ MAPE_HISTORY_PATH = LOGS_DIR / "mape_history.csv"
 
 def load_model():
     if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"Model tidak ditemukan: {MODEL_PATH}. Jalankan predict_future.py atau train_baseline.py dulu.")
+        raise FileNotFoundError(
+            f"Model tidak ditemukan: {MODEL_PATH}. Jalankan predict_future.py atau train_baseline.py dulu."
+        )
     return load(MODEL_PATH)
 
 
@@ -34,7 +36,9 @@ def evaluate_last_day(df):
     yesterday = df[df["datetime"] > last_ts - pd.Timedelta(hours=24)]
 
     if len(yesterday) < 24:
-        print(f"Peringatan: hanya {len(yesterday)} jam data aktual, gunakan yang tersedia.")
+        print(
+            f"Peringatan: hanya {len(yesterday)} jam data aktual, gunakan yang tersedia."
+        )
 
     model = load_model()
     y_pred = model.predict(yesterday[FEATURES])
@@ -48,7 +52,9 @@ def evaluate_last_day(df):
 def append_mape(eval_date, mape, n_hours):
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    row = pd.DataFrame({"date": [eval_date], "mape": [round(mape, 2)], "n_hours": [n_hours]})
+    row = pd.DataFrame(
+        {"date": [eval_date], "mape": [round(mape, 2)], "n_hours": [n_hours]}
+    )
     if MAPE_HISTORY_PATH.exists():
         history = pd.read_csv(MAPE_HISTORY_PATH)
         history = history[history["date"] != eval_date]

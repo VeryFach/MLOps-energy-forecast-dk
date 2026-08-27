@@ -66,13 +66,17 @@ def main():
         mlflow.log_param("lstm_units", "64,32")
         mlflow.log_param("dropout_rate", 0.2)
 
-        model = Sequential([
-            LSTM(64, return_sequences=True, input_shape=(WINDOW_SIZE, len(FEATURES))),
-            Dropout(0.2),
-            LSTM(32),
-            Dropout(0.2),
-            Dense(1),
-        ])
+        model = Sequential(
+            [
+                LSTM(
+                    64, return_sequences=True, input_shape=(WINDOW_SIZE, len(FEATURES))
+                ),
+                Dropout(0.2),
+                LSTM(32),
+                Dropout(0.2),
+                Dense(1),
+            ]
+        )
         model.compile(optimizer="adam", loss="mse", metrics=["mae"])
 
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -95,7 +99,9 @@ def main():
 
         y_pred = model.predict(X_test)
         y_test_inv = scaler.inverse_transform(
-            np.hstack([y_test.reshape(-1, 1), np.zeros((len(y_test), len(FEATURES) - 1))])
+            np.hstack(
+                [y_test.reshape(-1, 1), np.zeros((len(y_test), len(FEATURES) - 1))]
+            )
         )[:, 0]
         y_pred_inv = scaler.inverse_transform(
             np.hstack([y_pred, np.zeros((len(y_pred), len(FEATURES) - 1))])

@@ -34,7 +34,9 @@ def check_mape_trigger(history: pd.DataFrame) -> bool:
     print(f"MAPE last 3 days ({dates}): {values}")
 
     if (recent["mape"] > MAPE_THRESHOLD).all():
-        print(f"MAPE > {MAPE_THRESHOLD}% for {CONSECUTIVE_DAYS} consecutive days. Triggering retraining...")
+        print(
+            f"MAPE > {MAPE_THRESHOLD}% for {CONSECUTIVE_DAYS} consecutive days. Triggering retraining..."
+        )
         return True
 
     print(f"MAPE within normal range (<= {MAPE_THRESHOLD}%).")
