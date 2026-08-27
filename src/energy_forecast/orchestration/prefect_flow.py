@@ -22,6 +22,7 @@ def run_module(name: str) -> str:
         [sys.executable, "-m", name],
         capture_output=True,
         text=True,
+        check=False,
     )
     print(result.stdout)
     if result.returncode != 0:

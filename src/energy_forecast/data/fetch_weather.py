@@ -1,13 +1,14 @@
-import requests
+from datetime import date, datetime, timezone
+
 import pandas as pd
-from datetime import date
+import requests
 
 from energy_forecast.config import (
-    RAW_DIR,
+    HISTORY_START_DATE,
     LATITUDE,
     LONGITUDE,
     OPEN_METEO_ARCHIVE_URL,
-    HISTORY_START_DATE,
+    RAW_DIR,
     WEATHER_VARIABLES,
 )
 
@@ -17,7 +18,7 @@ def main():
         "latitude": LATITUDE,
         "longitude": LONGITUDE,
         "start_date": HISTORY_START_DATE,
-        "end_date": date.today().isoformat(),
+        "end_date": datetime.now(tz=timezone.utc).date().isoformat(),
         "hourly": WEATHER_VARIABLES,
     }
 

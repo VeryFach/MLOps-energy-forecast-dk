@@ -1,8 +1,6 @@
 import subprocess
 import sys
 
-from energy_forecast.config import PROJECT_ROOT
-
 SCRIPTS = [
     "energy_forecast.data.fetch_energy_dk",
     "energy_forecast.data.fetch_weather",
@@ -13,7 +11,7 @@ SCRIPTS = [
 def main():
     for module in SCRIPTS:
         print(f"=== Running {module} ===")
-        result = subprocess.run([sys.executable, "-m", module])
+        result = subprocess.run([sys.executable, "-m", module], check=False)
         if result.returncode != 0:
             print(f"Failed: {module} (exit code {result.returncode})")
             sys.exit(result.returncode)

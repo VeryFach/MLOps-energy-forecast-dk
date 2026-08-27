@@ -5,7 +5,7 @@ from joblib import dump
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 
-from energy_forecast.config import MODELS_DIR, MLFLOW_TRACKING_URI, PROCESSED_DIR
+from energy_forecast.config import MLFLOW_TRACKING_URI, MODELS_DIR, PROCESSED_DIR
 
 MODEL_PATH = MODELS_DIR / "baseline_model.joblib"
 
@@ -75,7 +75,7 @@ def main():
         print(f"MAPE: {mape:.2f}%")
         print(f"MAE: {mae:.2f} MW")
         print(f"Model saved to {MODEL_PATH}")
-        print(f"MLflow run logged successfully.")
+        print("MLflow run logged successfully.")
 
 
 if __name__ == "__main__":

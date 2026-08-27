@@ -1,7 +1,7 @@
 import pandas as pd
 from joblib import load
 
-from energy_forecast.config import PROCESSED_DIR, MODELS_DIR, LOGS_DIR
+from energy_forecast.config import LOGS_DIR, MODELS_DIR, PROCESSED_DIR
 
 TARGET = "consumption_mw"
 FEATURES = [

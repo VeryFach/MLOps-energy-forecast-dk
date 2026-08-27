@@ -5,10 +5,10 @@ import requests
 from minio import Minio
 
 from energy_forecast.config import (
+    CONSUMPTION_FIELD,
     DATA_START_DATE,
     ENERGIDATA_DATASET_URL,
     FETCH_LIMIT,
-    CONSUMPTION_FIELD,
     MINIO_ACCESS_KEY,
     MINIO_BUCKET,
     MINIO_ENDPOINT,

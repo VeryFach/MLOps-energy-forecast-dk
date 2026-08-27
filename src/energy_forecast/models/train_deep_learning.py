@@ -2,13 +2,13 @@ import mlflow
 import mlflow.tensorflow
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+import tensorflow as tf  # noqa: F401
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.models import Sequential
 
-from energy_forecast.config import MODELS_DIR, MLFLOW_TRACKING_URI, PROCESSED_DIR
+from energy_forecast.config import MLFLOW_TRACKING_URI, MODELS_DIR, PROCESSED_DIR
 
 TARGET = "consumption_mw"
 FEATURES = [
@@ -117,7 +117,7 @@ def main():
         print(f"RMSE: {rmse:.2f} MW")
         print(f"MAPE: {mape:.2f}%")
         print(f"Best model saved to {MODELS_DIR / 'lstm_model.keras'}")
-        print(f"MLflow run logged successfully.")
+        print("MLflow run logged successfully.")
 
 
 if __name__ == "__main__":
