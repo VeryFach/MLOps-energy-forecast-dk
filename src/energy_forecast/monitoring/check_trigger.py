@@ -3,7 +3,7 @@ import sys
 
 import pandas as pd
 
-from energy_forecast.config import DRIFT_LOG_PATH, LOGS_DIR, MAPE_HISTORY_PATH
+from energy_forecast.config import DRIFT_LOG_PATH, MAPE_HISTORY_PATH
 
 MAPE_THRESHOLD = 5.0
 CONSECUTIVE_DAYS = 3
@@ -66,7 +66,7 @@ def check_drift_trigger(drift_log: pd.DataFrame) -> bool:
 def run_retraining(model_type: str = "baseline") -> bool:
     module = f"energy_forecast.models.train_{model_type}"
     print(f"Running retraining: {module}")
-    result = subprocess.run([sys.executable, "-m", module])
+    result = subprocess.run([sys.executable, "-m", module], check=False)
     if result.returncode != 0:
         print(f"Retraining failed (exit code {result.returncode}).")
         return False

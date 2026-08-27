@@ -2,14 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-RUN pip install --no-cache-dir fastapi uvicorn mlflow scikit-learn joblib prometheus-client
-
-COPY src/ src/
-COPY data/ data/
-COPY models/ models/
-COPY logs/ logs/
+COPY . .
+RUN pip install --no-cache-dir ".[serving]"
 
 EXPOSE 8000
 

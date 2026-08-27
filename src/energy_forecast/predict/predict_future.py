@@ -1,19 +1,20 @@
 import time
-import requests
-import pandas as pd
+
 import holidays
-from sklearn.ensemble import RandomForestRegressor
+import pandas as pd
+import requests
 from joblib import dump, load
+from sklearn.ensemble import RandomForestRegressor
 
 from energy_forecast.config import (
     LATITUDE,
     LONGITUDE,
-    OPEN_METEO_URL,
-    OPEN_METEO_ARCHIVE_URL,
-    WEATHER_VARIABLES,
-    TIMEZONE,
-    PROCESSED_DIR,
     MODELS_DIR,
+    OPEN_METEO_ARCHIVE_URL,
+    OPEN_METEO_URL,
+    PROCESSED_DIR,
+    TIMEZONE,
+    WEATHER_VARIABLES,
 )
 
 TARGET = "consumption_mw"

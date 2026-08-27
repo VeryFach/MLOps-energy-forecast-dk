@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Version Consistency Checker for energy-forecast-dk.
 
@@ -149,7 +148,7 @@ def check_versions() -> list[str]:
                 errors.append(
                     f"WARN: Missing '{field}' in pyproject.toml [project] section"
                 )
-        print(f"  pyproject.toml structure: [OK]")
+        print("  pyproject.toml structure: [OK]")
 
     # 5. Check __init__.py exists
     init_file = PROJECT_ROOT / "src" / "energy_forecast" / "__init__.py"
@@ -158,7 +157,7 @@ def check_versions() -> list[str]:
             "WARN: Missing src/energy_forecast/__init__.py"
         )
     else:
-        print(f"  Package __init__.py: [OK]")
+        print("  Package __init__.py: [OK]")
 
     # 6. Check for hardcoded version strings in source
     src_dir = PROJECT_ROOT / "src" / "energy_forecast"

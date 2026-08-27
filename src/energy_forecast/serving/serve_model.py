@@ -2,7 +2,6 @@ import logging
 import time
 
 import mlflow
-import numpy as np
 import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -60,7 +59,7 @@ def load_model():
                 logger.info(f"Loaded local model from {local_path}")
                 return "local"
             raise FileNotFoundError("No model available")
-    except Exception as e:
+    except OSError as e:
         logger.error(f"Failed to load model from MLflow: {e}")
         try:
             from joblib import load as joblib_load
@@ -68,7 +67,7 @@ def load_model():
             model = joblib_load(local_path)
             logger.info(f"Fallback: loaded local model from {local_path}")
             return "local-fallback"
-        except Exception as e2:
+        except OSError as e2:
             logger.error(f"Local fallback also failed: {e2}")
             return None
 
@@ -89,9 +88,8 @@ async def health_check():
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: PredictionRequest):
-    global model
     if model is None:
-        version = load_model()
+        load_model()
         if model is None:
             raise RuntimeError("Model not available")
 

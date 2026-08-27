@@ -1,7 +1,7 @@
 import io
 
-import pandas as pd
 import holidays
+import pandas as pd
 from minio import Minio
 
 from energy_forecast.config import (
@@ -75,17 +75,17 @@ def save_to_minio(df: pd.DataFrame) -> None:
 
 def register_feast_features(df: pd.DataFrame) -> None:
     try:
-        from feast import Entity, FeatureStore, Field, RepoSource
-        from feast.types import Float32, Int64, String
+        from feast import Entity, Field, RepoSource  # noqa: F401
+        from feast.types import Float32, Int64  # noqa: F401
 
-        entity = Entity(name="datetime", join_keys=["datetime"])
+        entity = Entity(name="datetime", join_keys=["datetime"])  # noqa: F841
 
-        source = RepoSource(
+        source = RepoSource(  # noqa: F841
             path=str(PROCESSED_DIR / "merged_data.csv"),
             timestamp_field="datetime",
         )
 
-        feature_view_fields = [
+        feature_view_fields = [  # noqa: F841
             Field(name="consumption_mw", dtype=Float32),
             Field(name="temperature_2m", dtype=Float32),
             Field(name="relativehumidity_2m", dtype=Float32),
