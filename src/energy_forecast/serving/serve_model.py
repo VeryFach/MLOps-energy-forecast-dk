@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Energy Forecast DK API",
     description="API for Denmark electricity consumption forecasting",
-    version="1.0.0",
+    version="0.2.0",
 )
 
 model = None

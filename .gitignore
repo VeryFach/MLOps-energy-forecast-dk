@@ -12,14 +12,18 @@ __pycache__/
 .ruff_cache/
 
 # Downloaded data (reproducible via fetch scripts)
-data/raw/
-data/processed/
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 
 # Trained models (reproducible via training scripts)
-models/
+models/*
+!models/.gitkeep
 
 # Logs & monitoring artifacts
-logs/
+logs/*
+!logs/.gitkeep
 
 # Prefect
 .prefect/
@@ -32,11 +36,13 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Analyst personal insight (notebook eksplorasi)
-analyst/
+# Notebook (personal insight / eksplorasi)
+notebook/*
+!notebook/.gitkeep
 
 # image
-image/
+image/*
+!image/.gitkeep
 
 # Personal notes (docs/info.md)
 /docs/info.md
