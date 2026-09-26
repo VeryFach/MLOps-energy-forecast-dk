@@ -125,25 +125,25 @@ pip install -e ".[airflow]"
 pip install -e ".[all]"
 ```
 
-## Pemenuhan Tugas — Metode Pengerjaan Aktivitas (Wajib untuk Penilaian)
+## Pemenuhan Tugas
 
-> **Luaran Wajib:** `src/ingest_data.py`, `src/preprocess.py`, `data/raw/sample_*.csv`, `src/data/` (sesuai rubrik).
+> **Luaran Wajib:** `src/ingest_data.py`, `src/preprocess.py`, `data/raw/sample_*.csv`, `src/data/`.
 
-### 0. Persiapan Lingkungan (Poin 1)
-Pastikan folder `src/data` dan `data/raw` tersedia — sudah disiapkan via `src/data/.gitkeep` dan `data/raw/.gitkeep`. Di Codespaces/Linux:
+### 0. Persiapan Lingkungan
+Pastikan folder `src/data` dan `data/raw` tersedia sudah disiapkan via `src/data/.gitkeep` dan `data/raw/.gitkeep`. Di Codespaces/Linux:
 ```bash
 ls -R src/data data/raw
 # src/data/.gitkeep ada, data/raw/ terbuat otomatis oleh skrip (RAW_DIR.mkdir)
 ```
 
-### 1. Penarikan Data Dinamis — `src/ingest_data.py` (Poin 2)
+### 1. Penarikan Data Dinamis
 Menggunakan `requests` (sesuai opsi BeautifulSoup/Selenium/Requests) untuk menarik data dinamis dari:
 - **Energi Data Service** (`https://api.energidataservice.dk/dataset/GenerationProdTypeExchange`, `GrossCon` → `ConsumptionMW`) tanpa API key
 - **Open-Meteo Archive** (`https://archive-api.open-meteo.com/v1/archive`) untuk cuaca Copenhagen
 
 **Cara menjalankan di GitHub Codespaces / lokal:**
 ```bash
-# Opsi A — wrapper tugas (direkomendasikan untuk penilaian):
+# Opsi A — wrapper tugas:
 python src/ingest_data.py
 
 # Opsi B — modular (package):
@@ -160,7 +160,7 @@ Output:
 - Upload ke MinIO (fail-safe: tetap sukses lokal walau MinIO offline)
 - Sampel commit: `data/raw/sample_consumption.csv`, `data/raw/sample_weather.csv` (100 baris, lolos `.gitignore` via `!sample_*.csv`)
 
-### 2. Simulasi Periodik — Rerun Tanpa Overwrite Destruktif (Poin 3)
+### 2. Simulasi Periodik — Rerun Tanpa Overwrite Destruktif
 Setiap rerun membuat file timestamp baru:
 ```bash
 python src/ingest_data.py
@@ -174,7 +174,7 @@ python src/ingest_data.py && python src/ingest_data.py && ls data/raw/consumptio
 ```
 Logika ada di `src/ingest_data.py:save_with_timestamp` dan `src/energy_forecast/data/fetch_energy_dk.py:37-48` / `fetch_weather.py:16-27`.
 
-### 3. Prapemrosesan — `src/preprocess.py` (Poin 4)
+### 3. Prapemrosesan — `src/preprocess.py`
 Membersihkan data mentah agar siap ekstraksi fitur / training:
 ```bash
 python src/preprocess.py
@@ -187,17 +187,6 @@ Langkah di `src/preprocess.py` / `src/energy_forecast/data/merge_data.py:48-90`:
 - `inner merge` on `datetime`, `add_time_features` (hour/day_of_week/month/is_weekend), `add_holiday_feature` (holidays.Denmark), `add_lag_features` (24h/48h/168h)
 - `clean_missing_values()` → laporan `df.isna().sum()`, info `lag NaN 168 jam pertama` (wajar, di-drop saat training)
 - Simpan `data/processed/merged_data.csv` + info `sample_merged_data.csv`, upload MinIO
-
-### 4. Sinkronisasi Repositori — Branch Eksperimen (Poin 5)
-```bash
-git checkout -b eksperimen/data-ingestion
-git add src/ingest_data.py src/preprocess.py src/data/.gitkeep data/raw/sample_*.csv data/processed/sample_*.csv README.md docs/README.md .gitignore src/energy_forecast/data/fetch_energy_dk.py src/energy_forecast/data/fetch_weather.py src/energy_forecast/data/merge_data.py
-git commit -m "feat: tambah ingest_data.py & preprocess.py dengan timestamp non-destruktif + docs Codespaces"
-git push -u origin eksperimen/data-ingestion
-```
-Sampel data ter-commit karena `.gitignore:14-18` sudah mengizinkan `!sample_*.csv`.
-
----
 
 ## Running (MLOps Pipeline Umum)
 
