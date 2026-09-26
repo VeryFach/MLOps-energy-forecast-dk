@@ -13,6 +13,17 @@ from energy_forecast.config import (
 )
 
 
+def save_to_local(df: pd.DataFrame) -> None:
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamped_path = RAW_DIR / f"weather_{timestamp}.csv"
+    latest_path = RAW_DIR / "weather.csv"
+    df.to_csv(timestamped_path, index=False)
+    df.to_csv(latest_path, index=False)
+    print(f"Saved {len(df)} records to {timestamped_path}")
+    print(f"Updated latest snapshot to {latest_path} (timestamped copy preserved)")
+
+
 def main():
     params = {
         "latitude": LATITUDE,
@@ -28,11 +39,7 @@ def main():
     hourly = response.json()["hourly"]
     weather = pd.DataFrame(hourly)
 
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RAW_DIR / "weather.csv"
-    weather.to_csv(out_path, index=False)
-
-    print(f"Saved {len(weather)} records to {out_path}")
+    save_to_local(weather)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,15 @@ __pycache__/
 .ruff_cache/
 
 # Downloaded data (reproducible via fetch scripts)
+# Full raw dumps are git-ignored; sample + timestamped example are kept for tugas submission
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/sample_*.csv
+!data/raw/sample_*.json
+!data/raw/sample_*.parquet
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/sample_*.csv
 
 # Trained models (reproducible via training scripts)
 models/*

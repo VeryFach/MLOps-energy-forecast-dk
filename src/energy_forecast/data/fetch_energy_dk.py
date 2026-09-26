@@ -1,4 +1,5 @@
 import io
+from datetime import datetime, timezone
 
 import pandas as pd
 import requests
@@ -36,9 +37,15 @@ def fetch_from_api() -> pd.DataFrame:
 
 def save_to_local(df: pd.DataFrame) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RAW_DIR / "consumption.csv"
-    df.to_csv(out_path, index=False)
-    print(f"Saved {len(df)} records to {out_path}")
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamped_path = RAW_DIR / f"consumption_{timestamp}.csv"
+    latest_path = RAW_DIR / "consumption.csv"
+    # Save timestamped copy (non-destructive history)
+    df.to_csv(timestamped_path, index=False)
+    # Update latest snapshot for downstream pipeline
+    df.to_csv(latest_path, index=False)
+    print(f"Saved {len(df)} records to {timestamped_path}")
+    print(f"Updated latest snapshot to {latest_path} (timestamped copy preserved)")
 
 
 def save_to_minio(df: pd.DataFrame) -> None:

@@ -6,34 +6,46 @@ Predict electricity consumption (MW) in Denmark using hourly time-series data fr
 
 ```
 energy-forecast-dk/
-├── src/energy_forecast/          # Python package (installable via pip install -e .)
-│   ├── config.py                 # Parameters: country, coordinates, API URLs, paths, MinIO/MLflow config
-│   ├── data/                     # Ingestion, feature engineering & MinIO upload
-│   │   ├── fetch_energy_dk.py
-│   │   ├── fetch_weather.py
-│   │   └── merge_data.py
-│   ├── models/                   # Training with MLflow tracking
-│   │   ├── train_baseline.py
-│   │   └── train_deep_learning.py
-│   ├── predict/                  # Inference
-│   │   └── predict_future.py
-│   ├── monitoring/               # Evaluation, drift detection & retraining trigger
-│   │   ├── evaluate_model.py
-│   │   ├── detect_drift.py
-│   │   └── check_trigger.py
-│   ├── serving/                  # FastAPI model serving
-│   │   └── serve_model.py
-│   └── orchestration/            # Pipeline runner
-│       ├── daily_pipeline.py
-│       └── prefect_flow.py
+├── src/                          # Memenuhi rubrik tugas: src/ingest_data.py & src/preprocess.py
+│   ├── ingest_data.py            # Wrapper ingestion (Requests) — timestamp non-destruktif
+│   ├── preprocess.py             # Wrapper preprocessing — missing-value handling
+│   ├── data/                     # Folder src/data (rubrik Persiapan Lingkungan)
+│   │   └── .gitkeep
+│   └── energy_forecast/          # Python package (installable via pip install -e .)
+│       ├── config.py             # Parameters: country, coordinates, API URLs, paths, MinIO/MLflow config
+│       ├── data/                 # Ingestion modular & feature engineering & MinIO upload
+│       │   ├── fetch_energy_dk.py  # -> dipanggil oleh src/ingest_data.py (timestamped)
+│       │   ├── fetch_weather.py    # -> dipanggil oleh src/ingest_data.py (timestamped)
+│       │   └── merge_data.py       # -> dipanggil oleh src/preprocess.py (clean_missing_values)
+│       ├── models/               # Training with MLflow tracking
+│       │   ├── train_baseline.py
+│       │   └── train_deep_learning.py
+│       ├── predict/              # Inference
+│       │   └── predict_future.py
+│       ├── monitoring/           # Evaluation, drift detection & retraining trigger
+│       │   ├── evaluate_model.py
+│       │   ├── detect_drift.py
+│       │   └── check_trigger.py
+│       ├── serving/              # FastAPI model serving
+│       │   └── serve_model.py
+│       └── orchestration/        # Pipeline runner
+│           ├── daily_pipeline.py
+│           └── prefect_flow.py
 ├── dags/                         # Apache Airflow DAGs
 │   └── energy_forecast_dag.py
 ├── monitoring/                   # Prometheus & Grafana configuration
 │   ├── prometheus.yml
 │   └── grafana/
 ├── data/
-│   ├── raw/                      # Raw data (git-ignored, created by the scripts)
-│   └── processed/                # Merged feature table (git-ignored)
+│   ├── raw/                      # Raw data: consumption.csv + timestamped + sample_*.csv (untuk tugas)
+│   │   ├── consumption.csv            # latest snapshot (overwritten tiap run, tapi arsip timestamp dipertahankan)
+│   │   ├── consumption_YYYYMMDD_HHMMSS.csv  # arsip non-destruktif
+│   │   ├── weather.csv / weather_*.csv
+│   │   ├── sample_consumption.csv   # 100 baris sampel (di-commit, lolos .gitignore)
+│   │   └── sample_weather.csv
+│   └── processed/                # Merged feature table
+│       ├── merged_data.csv
+│       └── sample_merged_data.csv
 ├── models/                       # Trained models (git-ignored)
 ├── logs/                         # Monitoring & drift logs (git-ignored)
 ├── docs/
@@ -113,25 +125,103 @@ pip install -e ".[airflow]"
 pip install -e ".[all]"
 ```
 
-## Running
+## Pemenuhan Tugas — Metode Pengerjaan Aktivitas (Wajib untuk Penilaian)
 
-### Daily data pipeline
+> **Luaran Wajib:** `src/ingest_data.py`, `src/preprocess.py`, `data/raw/sample_*.csv`, `src/data/` (sesuai rubrik).
 
-Fetch new data and rebuild the feature table with one command:
+### 0. Persiapan Lingkungan (Poin 1)
+Pastikan folder `src/data` dan `data/raw` tersedia — sudah disiapkan via `src/data/.gitkeep` dan `data/raw/.gitkeep`. Di Codespaces/Linux:
+```bash
+ls -R src/data data/raw
+# src/data/.gitkeep ada, data/raw/ terbuat otomatis oleh skrip (RAW_DIR.mkdir)
+```
+
+### 1. Penarikan Data Dinamis — `src/ingest_data.py` (Poin 2)
+Menggunakan `requests` (sesuai opsi BeautifulSoup/Selenium/Requests) untuk menarik data dinamis dari:
+- **Energi Data Service** (`https://api.energidataservice.dk/dataset/GenerationProdTypeExchange`, `GrossCon` → `ConsumptionMW`) tanpa API key
+- **Open-Meteo Archive** (`https://archive-api.open-meteo.com/v1/archive`) untuk cuaca Copenhagen
+
+**Cara menjalankan di GitHub Codespaces / lokal:**
+```bash
+# Opsi A — wrapper tugas (direkomendasikan untuk penilaian):
+python src/ingest_data.py
+
+# Opsi B — modular (package):
+python -m energy_forecast.data.fetch_energy_dk
+python -m energy_forecast.data.fetch_weather
+
+# Opsi C — orkestrator:
+python -m energy_forecast.orchestration.daily_pipeline
+```
+Output:
+- `data/raw/consumption_YYYYMMDD_HHMMSS.csv` (arsip timestamp, tidak menimpa lama)
+- `data/raw/consumption.csv` (latest snapshot untuk `merge_data`)
+- `data/raw/weather_YYYYMMDD_HHMMSS.csv` + `data/raw/weather.csv`
+- Upload ke MinIO (fail-safe: tetap sukses lokal walau MinIO offline)
+- Sampel commit: `data/raw/sample_consumption.csv`, `data/raw/sample_weather.csv` (100 baris, lolos `.gitignore` via `!sample_*.csv`)
+
+### 2. Simulasi Periodik — Rerun Tanpa Overwrite Destruktif (Poin 3)
+Setiap rerun membuat file timestamp baru:
+```bash
+python src/ingest_data.py
+ls -lt data/raw/ | head
+# -rw-r--r-- consumption_20260304_135700.csv  <-- arsip 1
+# -rw-r--r-- consumption_20260304_140300.csv  <-- arsip 2 (baru, lama tetap ada)
+# -rw-r--r-- consumption.csv                 <-- latest
+
+# Verifikasi periodik 2x:
+python src/ingest_data.py && python src/ingest_data.py && ls data/raw/consumption_*.csv
+```
+Logika ada di `src/ingest_data.py:save_with_timestamp` dan `src/energy_forecast/data/fetch_energy_dk.py:37-48` / `fetch_weather.py:16-27`.
+
+### 3. Prapemrosesan — `src/preprocess.py` (Poin 4)
+Membersihkan data mentah agar siap ekstraksi fitur / training:
+```bash
+python src/preprocess.py
+# atau:
+python -m energy_forecast.data.merge_data
+```
+Langkah di `src/preprocess.py` / `src/energy_forecast/data/merge_data.py:48-90`:
+- Load `consumption.csv` → `drop_duplicates`, `dropna(datetime, ConsumptionMW)`, groupby DK1+DK2 → `consumption_mw`
+- Load `weather.csv` → `drop_duplicates(time)`, `ffill(limit=3)` untuk gap cuaca (missing-value handling)
+- `inner merge` on `datetime`, `add_time_features` (hour/day_of_week/month/is_weekend), `add_holiday_feature` (holidays.Denmark), `add_lag_features` (24h/48h/168h)
+- `clean_missing_values()` → laporan `df.isna().sum()`, info `lag NaN 168 jam pertama` (wajar, di-drop saat training)
+- Simpan `data/processed/merged_data.csv` + info `sample_merged_data.csv`, upload MinIO
+
+### 4. Sinkronisasi Repositori — Branch Eksperimen (Poin 5)
+```bash
+git checkout -b eksperimen/data-ingestion
+git add src/ingest_data.py src/preprocess.py src/data/.gitkeep data/raw/sample_*.csv data/processed/sample_*.csv README.md docs/README.md .gitignore src/energy_forecast/data/fetch_energy_dk.py src/energy_forecast/data/fetch_weather.py src/energy_forecast/data/merge_data.py
+git commit -m "feat: tambah ingest_data.py & preprocess.py dengan timestamp non-destruktif + docs Codespaces"
+git push -u origin eksperimen/data-ingestion
+```
+Sampel data ter-commit karena `.gitignore:14-18` sudah mengizinkan `!sample_*.csv`.
+
+---
+
+## Running (MLOps Pipeline Umum)
+
+### Daily data pipeline (orkestrasi)
+
+Fetch new data dan rebuild feature table (sama dengan poin 1-3 di atas, tapi via orchestrator):
 
 ```bash
 python -m energy_forecast.orchestration.daily_pipeline
+# ekuivalen dengan:
+# python src/ingest_data.py && python src/preprocess.py
+# atau:
+# python -m energy_forecast.data.fetch_energy_dk && python -m energy_forecast.data.fetch_weather && python -m energy_forecast.data.merge_data
 ```
 
-This runs, in order: `fetch_energy_dk` → `fetch_weather` → `merge_data`. Each step can also be run individually:
+Data disimpan lokal ke `data/raw/` (timestamped + latest) dan `data/processed/`, plus upload ke **MinIO**.
+
+### Drill: cek file mentah & processed
 
 ```bash
-python -m energy_forecast.data.fetch_energy_dk
-python -m energy_forecast.data.fetch_weather
-python -m energy_forecast.data.merge_data
+ls -lh data/raw/consumption*.csv data/raw/weather*.csv
+head data/raw/sample_consumption.csv
+python -c "import pandas as pd; print(pd.read_csv('data/processed/merged_data.csv').shape); print(pd.read_csv('data/processed/merged_data.csv').isna().sum())"
 ```
-
-Data is saved locally to `data/raw/` and `data/processed/`, and also uploaded to **MinIO** object storage.
 
 ### Drift detection
 

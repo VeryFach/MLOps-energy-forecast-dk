@@ -53,6 +53,40 @@ def add_lag_features(df):
     return df
 
 
+def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
+    """Pembersihan missing values untuk persiapan feature engineering.
+
+    - Laporan jumlah missing per kolom.
+    - Forward-fill untuk gap cuaca singkat (jika ada).
+    - Lag features (168 jam pertama) sengaja dipertahankan sebagai NaN
+      agar downstream training bisa memutuskan dropna/fill secara eksplisit.
+    """
+    missing_before = df.isna().sum()
+    if missing_before.sum() > 0:
+        print("Missing values sebelum cleaning:")
+        print(missing_before[missing_before > 0])
+
+    # Contoh pembersihan generik: forward-fill sisa gap kecil (max 3 jam)
+    # Tidak mengisi lag NaN yang memang butuh history 168 jam
+    weather_cols = ["temperature_2m", "relativehumidity_2m", "windspeed_10m"]
+    for col in weather_cols:
+        if col in df.columns:
+            df[col] = df[col].ffill(limit=3)
+
+    missing_after = df.isna().sum()
+    if missing_after.sum() > 0:
+        print("Missing values setelah cleaning (sisa NaN lag awal wajar):")
+        print(missing_after[missing_after > 0])
+    else:
+        print("Tidak ada missing values setelah cleaning.")
+
+    # Info tambahan: berapa baris yang akan ter-drop jika training
+    lag_cols = ["consumption_lag_24h", "consumption_lag_48h", "consumption_lag_168h"]
+    n_drop = df[lag_cols].isna().any(axis=1).sum() if all(c in df.columns for c in lag_cols) else 0
+    print(f"Baris dengan lag NaN (butuh drop sebelum training): {n_drop}/{len(df)}")
+    return df
+
+
 def save_to_minio(df: pd.DataFrame) -> None:
     client = Minio(
         MINIO_ENDPOINT,
@@ -114,6 +148,7 @@ def main():
     merged = add_time_features(merged)
     merged = add_holiday_feature(merged)
     merged = add_lag_features(merged)
+    merged = clean_missing_values(merged)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     out_path = PROCESSED_DIR / "merged_data.csv"
