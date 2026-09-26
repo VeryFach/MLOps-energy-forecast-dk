@@ -51,3 +51,8 @@ image/*
 
 # Personal notes (docs/info.md)
 /docs/info.md
+
+# Helper commit scripts
+scripts/commit_to_main.sh
+scripts/commit_to_main.ps1
+scripts/create_eksperimen.sh
