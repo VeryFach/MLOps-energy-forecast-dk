@@ -1,22 +1,3 @@
-"""
-preprocess.py — Automasi Prapemrosesan (Data Cleaning & Feature Preparation)
-
-Memenuhi rubrik:
-  - File `src/preprocess.py` di folder `src/`
-  - Membersihkan data mentah (`data/raw/consumption.csv` + `data/raw/weather.csv`)
-    -> handling missing values, deduplikasi, tipe datetime, merge, fitur waktu/holiday/lag
-  - Output siap untuk tahap ekstraksi fitur / training: `data/processed/merged_data.csv`
-
-Cara jalan (GitHub Codespaces):
-  python src/preprocess.py
-  # atau:
-  python -m energy_forecast.data.merge_data
-
-Catatan: Untuk data teks (NLP) preprocessing akan berupa tokenization/stopword removal.
-Untuk time-series energi, preprocessing yang relevan adalah missing-value handling,
-deduplikasi, dan feature engineering kalender/lag. Skrip ini mendemonstrasikan keduanya.
-"""
-
 import io
 import sys
 from pathlib import Path

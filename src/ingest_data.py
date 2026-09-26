@@ -1,26 +1,3 @@
-"""
-ingest_data.py — Skrip Penarikan Data Dinamis (Data Ingestion)
-
-Memenuhi rubrik:
-  - File `src/ingest_data.py` di folder `src/`
-  - Menggunakan `requests` untuk mengambil data dinamis (Energi Data Service + Open-Meteo)
-  - Simulasi periodik: rerun tanpa menimpa data lama secara destruktif (timestamp pada nama file)
-  - Juga meng-update `consumption.csv` / `weather.csv` sebagai snapshot terbaru untuk pipeline downstream
-
-Cara jalan (GitHub Codespaces):
-  python src/ingest_data.py
-  # atau modul:
-  python -m energy_forecast.data.fetch_energy_dk
-  python -m energy_forecast.data.fetch_weather
-
-Output:
-  data/raw/consumption_YYYYMMDD_HHMMSS.csv  (arsip non-destruktif)
-  data/raw/consumption.csv                  (latest snapshot)
-  data/raw/weather_YYYYMMDD_HHMMSS.csv
-  data/raw/weather.csv
-  + upload ke MinIO bucket `energy-forecast` (jika MinIO tersedia, fail-safe)
-"""
-
 import io
 import sys
 from datetime import datetime, timezone
