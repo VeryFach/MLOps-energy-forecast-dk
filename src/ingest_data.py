@@ -7,7 +7,6 @@ import pandas as pd
 import requests
 from minio import Minio
 
-# --- Pastikan import `energy_forecast` bekerja saat dijalankan sebagai `python src/ingest_data.py` ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
