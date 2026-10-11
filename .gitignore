@@ -13,14 +13,21 @@ __pycache__/
 
 # Downloaded data (reproducible via fetch scripts)
 # Full raw dumps are git-ignored; sample + timestamped example are kept for tugas submission
+# Ignore seluruh dataset mentah
 data/raw/*
+
+# Tetap izinkan metadata DVC dan .gitignore
+!data/raw/*.dvc
+!data/raw/.gitignore
 !data/raw/.gitkeep
-!data/raw/sample_*.csv
-!data/raw/sample_*.json
-!data/raw/sample_*.parquet
+
+# Ignore dataset hasil pemrosesan
 data/processed/*
+
+# Tetap izinkan metadata DVC
+!data/processed/*.dvc
+!data/processed/.gitignore
 !data/processed/.gitkeep
-!data/processed/sample_*.csv
 
 # Trained models (reproducible via training scripts)
 models/*
