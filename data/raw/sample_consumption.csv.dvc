@@ -1,0 +1,5 @@
+outs:
+- md5: caee71700a7afbe6aafc5c879f35fd07
+  size: 5632
+  hash: md5
+  path: sample_consumption.csv

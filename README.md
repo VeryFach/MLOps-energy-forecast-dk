@@ -174,6 +174,8 @@ python src/ingest_data.py && python src/ingest_data.py && ls data/raw/consumptio
 ```
 Logika ada di `src/ingest_data.py:save_with_timestamp` dan `src/energy_forecast/data/fetch_energy_dk.py:37-48` / `fetch_weather.py:16-27`.
 
+> Penjelasan lengkap mekanisme versioning ini (dan mengapa krusial untuk reproduksibilitas model) ada di section [Data Versioning & Reproducibility](#data-versioning--reproducibility).
+
 ### 3. Prapemrosesan — `src/preprocess.py`
 Membersihkan data mentah agar siap ekstraksi fitur / training:
 ```bash
@@ -295,6 +297,75 @@ All parameters live in `src/energy_forecast/config.py`:
 8. **Monitoring** — `evaluate_model` + `check_trigger` detect drift and auto-retrain (MAPE > 5% OR drift signals exceeded).
 9. **Serving** — FastAPI serves predictions via REST API, containerized with Docker.
 
+## Data Versioning & Reproducibility
+
+### Alur Penambahan Versi Data (yang Sudah Diimplementasikan)
+
+Setiap kali pipeline ingestion dijalankan, data **tidak pernah ditimpa secara destruktif**. Mekanisme versioning bekerja di tiga lapis:
+
+1. **Arsip timestamp non-destruktif (lapis utama)** — `save_with_timestamp()` (`src/ingest_data.py:71-84`) dan `save_to_local()` (`src/energy_forecast/data/fetch_energy_dk.py:38-48`, `src/energy_forecast/data/fetch_weather.py:16-24`) menulis **dua** file sekaligus:
+   - `data/raw/{nama}_YYYYMMDD_HHMMSS.csv` — arsip immutable dengan timestamp **UTC** (contoh: `consumption_20261011_093000.csv`)
+   - `data/raw/{nama}.csv` — snapshot `latest` yang dipakai downstream (`merge_data`)
+
+   Rerun 3x menghasilkan 3 arsip berbeda + 1 latest; file lama tidak pernah dihapus.
+
+2. **Object storage (MinIO)** — snapshot terbaru di-upload ke bucket `energy-forecast` (dibuat otomatis bila belum ada) sebagai `raw/consumption.csv`, `raw/weather.csv`, dan `processed/merged_data.csv` (`src/ingest_data.py:87-109`, `src/energy_forecast/data/merge_data.py:90-109`). Upload bersifat **fail-safe**: pipeline tetap sukses walau MinIO offline.
+
+3. **Traceability ke model (MLflow)** — setiap training run mencatat parameter data (`train_rows`, `test_rows`, `n_features`) dan mendaftarkan model ke MLflow Registry (`src/energy_forecast/models/train_baseline.py:47-71`), sehingga satu model version bisa dilacak ke run dan snapshot data yang menghasilkannya.
+
+Alur lengkapnya:
+
+```
+[Energi Data Service / Open-Meteo API]  ← nilai "terkini", bisa direvisi
+        │  fetch (requests)
+        ▼
+data/raw/consumption_<UTC timestamp>.csv  ← ARSIP VERSI (immutable, non-destruktif)
+data/raw/consumption.csv                  ← latest snapshot (input merge_data)
+        │  merge_data (deterministik: clean → merge → fitur → lag)
+        ▼
+data/processed/merged_data.csv            ← feature table
+        │  training (MLflow run + Model Registry)
+        ▼
+models/baseline_model.joblib              ← tercatat: run_id, train_rows, features
+```
+
+### Cara Mereproduksi Model dari Versi Data Tertentu
+
+Karena setiap arsip timestamp adalah **snapshot penuh** (bukan delta), reproduksi hanya butuh tiga langkah:
+
+```bash
+# 1. Pilih versi dataset yang mau direproduksi
+ls -lt data/raw/consumption_*.csv
+
+# 2. Jadikan arsip itu sebagai input preprocessing
+cp data/raw/consumption_20261011_093000.csv data/raw/consumption.csv
+cp data/raw/weather_20261011_093000.csv     data/raw/weather.csv
+
+# 3. Rebuild feature table dan retrain
+python -m energy_forecast.data.merge_data
+python -m energy_forecast.models.train_baseline
+```
+
+Kombinasi **(kode Git commit + file `consumption_<timestamp>.csv`)** kini menjadi definisi eksperimen yang lengkap dan bisa diulang kapan saja.
+
+### Mengapa Versioning Dataset Krusial untuk Reproduksibilitas Model
+
+1. **API bersifat "moving target".** Energi Data Service dan Open-Meteo selalu mengembalikan nilai terbaru, dan data historis bisa direvisi (koreksi meter, backfill, penyesuaian DST). Tanpa snapshot, menjalankan ulang kode yang sama nyatanya menghasilkan dataset yang berbeda.
+
+2. **Kode saja tidak cukup untuk reproduksi.** Model = f(data, kode, hyperparameter, seed). Git hanya mem-version **kode**; kalau dataset berubah diam-diam, "same code" ≠ "same model". Arsip timestamp mengunci komponen data dari persamaan itu.
+
+3. **Debugging dan audit menjadi mungkin.** Ketika metrik memburuk (mis. MAPE naik 3% → 7%), kita bisa melatih ulang pada data versi lama vs baru untuk membuktikan apakah penyebabnya perubahan data, bukan bug kode. Ini sekaligus landasan dari drift detection yang dipakai sebagai retraining trigger di project ini.
+
+4. **Rollback tanpa perlu fetch ulang.** Bila dataset terbaru ternyata korup (API error/429 separuh jalan), kembali ke arsip timestamp sebelumnya cukup dengan satu `cp` — tanpa harus menunggu API menyediakan ulang data historis.
+
+5. **Kolaborasi dan CI tetap ringan.** `data/raw/sample_*.csv` (100 baris) di-commit sebagai contoh format dan smoke-test pipeline, sementara dataset penuh tetap di luar Git (repo tidak membengkak) namun tersedia lengkap di folder lokal dan MinIO.
+
+### Keterbatasan & Roadmap
+
+- Snapshot di MinIO saat ini menyimpan versi **latest** per object; untuk retensi penuh sisi server, object versioning S3 bisa diaktifkan pada bucket `energy-forecast` (via MinIO Console atau `mc version enable`) — arsip timestamp lokal tetap menjadi sumber kebenaran utama.
+- `data/processed/merged_data.csv` ditimpa setiap run; reprodusibilitasnya dijamin oleh preprocessing yang deterministik ditambah arsip raw yang lengkap.
+- Langkah naik berikutnya (opsional): **DVC** atau **lakeFS** untuk versioning dataset skala besar dengan pointer versi yang bisa di-commit langsung ke Git.
+
 ## Troubleshooting
 
 **Error 429 (Rate limit)** — Energi Data Service limits request frequency. Wait a few minutes and rerun.
@@ -302,5 +373,13 @@ All parameters live in `src/energy_forecast/config.py`:
 **Error 404** — The dataset may have been renamed or removed. Check the dataset catalog at `https://api.energidataservice.dk/meta/dataset`.
 
 **MinIO connection refused** — Ensure MinIO is running locally on port 9000.
+
+**MinIO image not found / 401 Unauthorized** — The official `minio/minio` (Docker Hub) and `quay.io/minio/minio` images are no longer pullable. Use the community-maintained S3-compatible fork instead:
+
+```bash
+docker run -d --name minio -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+  pgsty/silo server /data --console-address ":9001"
+```
 
 **MLflow connection refused** — Ensure MLflow server is running: `mlflow server --port 5000`.
