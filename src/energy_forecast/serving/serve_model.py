@@ -4,6 +4,9 @@ import time
 import mlflow
 import pandas as pd
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel
 
 from energy_forecast.config import MLFLOW_TRACKING_URI, MODELS_DIR, PROCESSED_DIR
@@ -19,6 +22,21 @@ app = FastAPI(
 
 model = None
 model_name = "energy-forecast-baseline"
+
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+REQUEST_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds",
+    ["method", "endpoint"],
+)
+PREDICTION_LATENCY = Gauge(
+    "prediction_latency_ms",
+    "Latest prediction latency in milliseconds",
+)
 
 
 class PredictionRequest(BaseModel):
@@ -36,6 +54,17 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     model_version: str | None
+
+
+@app.middleware("http")
+async def collect_metrics(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    latency = time.perf_counter() - start
+    endpoint = request.url.path
+    REQUEST_LATENCY.labels(request.method, endpoint).observe(latency)
+    REQUEST_COUNT.labels(request.method, endpoint, str(response.status_code)).inc()
+    return response
 
 
 def load_model():
@@ -62,7 +91,7 @@ def load_model():
                 logger.info(f"Loaded local model from {local_path}")
                 return "local"
             raise FileNotFoundError("No model available")
-    except OSError as e:
+    except Exception as e:
         logger.error(f"Failed to load model from MLflow: {e}")
         try:
             from joblib import load as joblib_load
@@ -71,7 +100,7 @@ def load_model():
             model = joblib_load(local_path)
             logger.info(f"Fallback: loaded local model from {local_path}")
             return "local-fallback"
-        except OSError as e2:
+        except Exception as e2:
             logger.error(f"Local fallback also failed: {e2}")
             return None
 
@@ -88,6 +117,11 @@ async def health_check():
         model_loaded=model is not None,
         model_version=load_model() if model is None else "loaded",
     )
+
+
+@app.get("/metrics")
+async def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -146,6 +180,7 @@ async def predict(request: PredictionRequest):
 
     predictions = model.predict(frame[FEATURES])
     latency = (time.perf_counter() - start) * 1000
+    PREDICTION_LATENCY.set(latency)
 
     if latency > 5000:
         logger.warning(f"Prediction latency {latency:.0f}ms exceeds 5s threshold")

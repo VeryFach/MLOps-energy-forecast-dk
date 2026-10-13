@@ -11,6 +11,7 @@ from energy_forecast.config import (
     RAW_DIR,
     WEATHER_VARIABLES,
 )
+from energy_forecast.storage import upload_dataframe_csv_to_minio
 
 
 def save_to_local(df: pd.DataFrame) -> None:
@@ -22,6 +23,10 @@ def save_to_local(df: pd.DataFrame) -> None:
     df.to_csv(latest_path, index=False)
     print(f"Saved {len(df)} records to {timestamped_path}")
     print(f"Updated latest snapshot to {latest_path} (timestamped copy preserved)")
+
+
+def save_to_minio(df: pd.DataFrame) -> None:
+    upload_dataframe_csv_to_minio(df, "raw/weather.csv", "[fetch_weather]")
 
 
 def main():
@@ -40,6 +45,7 @@ def main():
     weather = pd.DataFrame(hourly)
 
     save_to_local(weather)
+    save_to_minio(weather)
 
 
 if __name__ == "__main__":

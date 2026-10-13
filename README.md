@@ -70,7 +70,7 @@ energy-forecast-dk/
 - [Git](https://git-scm.com/)
 - Internet access (to reach the APIs)
 - Docker & Docker Compose (for full MLOps stack)
-- MinIO running locally on port 9000 (for object storage)
+- MinIO on port 9000 for object storage. It is included in `docker-compose.yml`; for local non-Docker runs, start it manually or set `MINIO_ENDPOINT`.
 - Apache Airflow (for DAG-based orchestration)
 
 ## Setup
@@ -256,7 +256,7 @@ airflow dags test energy_forecast_daily
 
 ## Docker Deployment
 
-Run the full MLOps stack (API + MLflow + Prometheus + Grafana):
+Run the full MLOps stack (API + MinIO + MLflow + Prometheus + Grafana):
 
 ```bash
 docker-compose up -d
@@ -266,6 +266,8 @@ Services:
 | Service | Port | Description |
 |---------|------|-------------|
 | API | 8000 | FastAPI prediction service |
+| MinIO API | 9000 | S3-compatible object storage |
+| MinIO Console | 9001 | Object storage admin UI |
 | MLflow | 5000 | Experiment tracking & model registry |
 | Prometheus | 9090 | Metrics scraping |
 | Grafana | 3000 | Dashboards (admin/admin) |
@@ -282,7 +284,11 @@ All parameters live in `src/energy_forecast/config.py`:
 | `ENERGIDATA_DATASET_URL` | Energi Data Service API URL | ... |
 | `DATA_START_DATE` | Start date for fetching data | `2026-01-01` |
 | `FETCH_LIMIT` | Maximum number of records | `10000` |
+| `PROJECT_ROOT` | Root directory for data/models/logs in installed/containerized runs | auto-detected, `/app` in Docker |
 | `MINIO_ENDPOINT` | MinIO object storage URL | `http://localhost:9000` |
+| `MINIO_ACCESS_KEY` | MinIO access key | `minioadmin` |
+| `MINIO_SECRET_KEY` | MinIO secret key | `minioadmin` |
+| `MINIO_BUCKET` | MinIO bucket name | `energy-forecast` |
 | `MLFLOW_TRACKING_URI` | MLflow tracking server URL | `http://localhost:5000` |
 
 ## MLOps Pipeline
@@ -309,7 +315,7 @@ Setiap kali pipeline ingestion dijalankan, data **tidak pernah ditimpa secara de
 
    Rerun 3x menghasilkan 3 arsip berbeda + 1 latest; file lama tidak pernah dihapus.
 
-2. **Object storage (MinIO)** — snapshot terbaru di-upload ke bucket `energy-forecast` (dibuat otomatis bila belum ada) sebagai `raw/consumption.csv`, `raw/weather.csv`, dan `processed/merged_data.csv` (`src/ingest_data.py:87-109`, `src/energy_forecast/data/merge_data.py:90-109`). Upload bersifat **fail-safe**: pipeline tetap sukses walau MinIO offline.
+2. **Object storage (MinIO)** — snapshot terbaru di-upload ke bucket `energy-forecast` (dibuat otomatis bila belum ada) sebagai `raw/consumption.csv`, `raw/weather.csv`, dan `processed/merged_data.csv`. Upload memakai helper bersama di `src/energy_forecast/storage.py` dan bersifat **fail-safe**: pipeline tetap sukses walau MinIO offline.
 
 3. **Traceability ke model (MLflow)** — setiap training run mencatat parameter data (`train_rows`, `test_rows`, `n_features`) dan mendaftarkan model ke MLflow Registry (`src/energy_forecast/models/train_baseline.py:47-71`), sehingga satu model version bisa dilacak ke run dan snapshot data yang menghasilkannya.
 
