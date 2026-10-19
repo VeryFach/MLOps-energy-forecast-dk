@@ -21,6 +21,7 @@ app = FastAPI(
 )
 
 model = None
+loaded_model_version = None
 model_name = "energy-forecast-baseline"
 
 REQUEST_COUNT = Counter(
@@ -68,7 +69,7 @@ async def collect_metrics(request: Request, call_next):
 
 
 def load_model():
-    global model
+    global model, loaded_model_version
     try:
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
         client = mlflow.MlflowClient()
@@ -77,6 +78,7 @@ def load_model():
             latest_version = max(versions, key=lambda v: int(v.version))
             model_uri = latest_version.source
             model = mlflow.sklearn.load_model(model_uri)
+            loaded_model_version = latest_version.version
             logger.info(f"Loaded model {model_name} version {latest_version.version}")
             return latest_version.version
         else:
@@ -88,6 +90,7 @@ def load_model():
             local_path = MODELS_DIR / "baseline_model.joblib"
             if local_path.exists():
                 model = joblib_load(local_path)
+                loaded_model_version = "local"
                 logger.info(f"Loaded local model from {local_path}")
                 return "local"
             raise FileNotFoundError("No model available")
@@ -98,10 +101,12 @@ def load_model():
 
             local_path = MODELS_DIR / "baseline_model.joblib"
             model = joblib_load(local_path)
+            loaded_model_version = "local-fallback"
             logger.info(f"Fallback: loaded local model from {local_path}")
             return "local-fallback"
         except Exception as e2:
             logger.error(f"Local fallback also failed: {e2}")
+            loaded_model_version = None
             return None
 
 
@@ -115,7 +120,7 @@ async def health_check():
     return HealthResponse(
         status="healthy" if model is not None else "degraded",
         model_loaded=model is not None,
-        model_version=load_model() if model is None else "loaded",
+        model_version=load_model() if model is None else loaded_model_version,
     )
 
 
@@ -188,7 +193,7 @@ async def predict(request: PredictionRequest):
     return PredictionResponse(
         datetime=[dt.isoformat() for dt in future],
         consumption_mw=predictions.tolist(),
-        model_version="loaded",
+        model_version=loaded_model_version or "unknown",
         latency_ms=round(latency, 2),
     )
 

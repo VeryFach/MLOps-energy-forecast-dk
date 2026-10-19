@@ -33,6 +33,11 @@ data/processed/*
 models/*
 !models/.gitkeep
 
+# Local MLflow tracking store and temporary browser profile
+mlflow.db
+mlruns/
+.edge-mlflow/
+
 # Logs & monitoring artifacts
 logs/*
 !logs/.gitkeep
@@ -56,10 +61,9 @@ notebook/*
 image/*
 !image/.gitkeep
 
-# Personal notes (docs/info.md)
-/docs/info.md
+# Dokumen baru tetap lokal; file docs yang sudah dilacak Git tetap dilacak
+/docs/*
+!/docs/.gitkeep
 
-# Helper commit scripts
-scripts/commit_to_main.sh
-scripts/commit_to_main.ps1
-scripts/create_eksperimen.sh
+# Skrip pribadi baru tetap lokal; skrip yang sudah dilacak Git tetap dilacak
+/scripts/*

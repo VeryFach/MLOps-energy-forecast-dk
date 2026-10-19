@@ -18,6 +18,7 @@ energy-forecast-dk/
 │       │   ├── fetch_weather.py    # -> dipanggil oleh src/ingest_data.py (timestamped)
 │       │   └── merge_data.py       # -> dipanggil oleh src/preprocess.py (clean_missing_values)
 │       ├── models/               # Training with MLflow tracking
+│       │   ├── train.py             # Three MLflow runs + best-model selection
 │       │   ├── train_baseline.py
 │       │   └── train_deep_learning.py
 │       ├── predict/              # Inference
@@ -233,6 +234,41 @@ python -m energy_forecast.models.train_deep_learning
 
 Both scripts log metrics (RMSE, MAPE) and register models to the **MLflow Registry**.
 
+### Eksperimen tiga variasi untuk tugas MLflow
+
+`src/energy_forecast/models/train.py` memakai ulang
+`energy_forecast.models.train_baseline` untuk tiga kombinasi Random Forest.
+Dataset latih adalah `data/processed/merged_data.csv`; skrip memeriksa
+bahwa `consumption.csv` dan `weather.csv` sesuai hash pada pointer DVC LK-05.
+Ketiga run memakai split kronologis yang sama (80% latih, 20% uji) dan mencatat
+parameter, hash dataset, RMSE, MAE, MAPE, serta artefak model. Run dengan RMSE
+terendah didaftarkan ke MLflow Model Registry dan disimpan sebagai
+`models/baseline_model.joblib` untuk kode prediksi yang sudah ada.
+
+```bash
+pip install -e .
+# Jika data/raw/*.csv belum tersedia: dvc pull
+python src/preprocess.py
+mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
+# Di terminal Codespaces kedua:
+python -m energy_forecast.models.train
+```
+
+Buka tab **Ports** Codespaces untuk port 5000, lalu di MLflow UI pilih eksperimen
+`energy-forecast-baseline` > **Training runs**. Tampilan grafik di sebelah daftar
+run memperlihatkan perbandingan MAE, MAPE, dan RMSE. Luaran pelaksanaan tersimpan
+secara lokal di `docs/` (diabaikan Git, kecuali `.gitkeep`):
+`docs/experiment_results.csv`, `docs/model_metadata.md`, dan
+`docs/report_mlflow.pdf` (berisi screenshot UI Docker). Berkas laporan dan
+skrip pembuat PDF disimpan lokal untuk kebutuhan tugas pribadi.
+
+Screenshot laporan saat ini diambil dari **MLflow 2.10 dalam Docker lokal**
+pada port 5000. Daftar UI menampilkan enam run karena tiga variasi dijalankan
+dua kali saat pengujian integrasi; CSV dan metadata menunjukkan eksekusi terakhir
+yang memilih Registry versi 2. Folder `docs/` diabaikan Git (kecuali `.gitkeep`),
+sehingga bukti dashboard perlu dibuat ulang di Codespaces jika dosen
+mensyaratkan lingkungan tersebut.
+
 ### Model serving (FastAPI)
 
 ```bash
@@ -256,11 +292,35 @@ airflow dags test energy_forecast_daily
 
 ## Docker Deployment
 
-Run the full MLOps stack (API + MinIO + MLflow + Prometheus + Grafana):
+Jalankan stack Docker lokal (API + MinIO + MLflow + Prometheus + Grafana):
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
+docker compose ps
 ```
+
+Container MinIO yang baru masih kosong. Untuk memakai dataset DVC LK-05 yang
+sudah ada di `data/raw/`, unggah file tanpa mengubah isinya, jalankan tiga
+eksperimen terhadap MLflow Docker, lalu mulai ulang API agar memuat versi model
+terbaru dari Registry:
+
+```bash
+pip install -e .
+# Jika data/raw/*.csv belum tersedia: dvc pull
+python src/preprocess.py
+python -m energy_forecast.data.sync_to_minio
+python -m energy_forecast.models.train
+docker compose restart api
+```
+
+`energy_forecast.data.sync_to_minio` memeriksa hash raw terhadap pointer DVC dan
+membandingkan MD5 objek MinIO dengan file lokal setelah upload. Cek bucket
+`energy-forecast` di MinIO Console (`http://localhost:9001`), run dan model
+Registry di MLflow (`http://localhost:5000`), serta `GET /health` dan
+`POST /predict` di API (`http://localhost:8000/docs`). Database dan artefak
+MLflow Docker disimpan dalam volume `mlflow-data`; data MinIO dalam `minio-data`.
+Stack ini berjalan lokal untuk uji integrasi, dengan konfigurasi kredensial
+pengembangan dari `docker-compose.yml`.
 
 Services:
 | Service | Port | Description |

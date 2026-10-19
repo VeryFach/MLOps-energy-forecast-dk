@@ -5,6 +5,15 @@ __pycache__
 .pytest_cache
 .mypy_cache
 .ruff_cache
+mlflow.db
+mlruns/
+.edge-mlflow/
+scripts/
+
+docs/experiment_results.csv
+docs/model_metadata.md
+docs/report_mlflow.pdf
+docs/mlflow_*.png
 
 data/raw/*.csv
 data/processed/*.csv
