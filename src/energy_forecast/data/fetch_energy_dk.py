@@ -1,21 +1,16 @@
-import io
 from datetime import datetime, timezone
 
 import pandas as pd
 import requests
-from minio import Minio
 
 from energy_forecast.config import (
     CONSUMPTION_FIELD,
     DATA_START_DATE,
     ENERGIDATA_DATASET_URL,
     FETCH_LIMIT,
-    MINIO_ACCESS_KEY,
-    MINIO_BUCKET,
-    MINIO_ENDPOINT,
-    MINIO_SECRET_KEY,
     RAW_DIR,
 )
+from energy_forecast.storage import upload_dataframe_csv_to_minio
 
 
 def fetch_from_api() -> pd.DataFrame:
@@ -49,25 +44,7 @@ def save_to_local(df: pd.DataFrame) -> None:
 
 
 def save_to_minio(df: pd.DataFrame) -> None:
-    client = Minio(
-        MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-        secure=False,
-    )
-    if not client.bucket_exists(MINIO_BUCKET):
-        client.make_bucket(MINIO_BUCKET)
-
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
-    csv_buffer = io.BytesIO(csv_bytes)
-    client.put_object(
-        MINIO_BUCKET,
-        "raw/consumption.csv",
-        csv_buffer,
-        length=len(csv_bytes),
-        content_type="text/csv",
-    )
-    print(f"Uploaded consumption.csv to MinIO bucket '{MINIO_BUCKET}'")
+    upload_dataframe_csv_to_minio(df, "raw/consumption.csv", "[fetch_energy]")
 
 
 def main():

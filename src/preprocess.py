@@ -1,10 +1,8 @@
-import io
 import sys
 from pathlib import Path
 
 import holidays
 import pandas as pd
-from minio import Minio
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -12,13 +10,10 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from energy_forecast.config import (  # noqa: E402
-    MINIO_ACCESS_KEY,
-    MINIO_BUCKET,
-    MINIO_ENDPOINT,
-    MINIO_SECRET_KEY,
     PROCESSED_DIR,
     RAW_DIR,
 )
+from energy_forecast.storage import upload_dataframe_csv_to_minio  # noqa: E402
 
 
 def load_consumption() -> pd.DataFrame:
@@ -118,27 +113,7 @@ def save_processed(df: pd.DataFrame) -> Path:
 
 
 def upload_to_minio(df: pd.DataFrame) -> None:
-    try:
-        client = Minio(
-            MINIO_ENDPOINT.replace("http://", "").replace("https://", ""),
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=MINIO_ENDPOINT.startswith("https://"),
-        )
-        if not client.bucket_exists(MINIO_BUCKET):
-            client.make_bucket(MINIO_BUCKET)
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
-        csv_buffer = io.BytesIO(csv_bytes)
-        client.put_object(
-            MINIO_BUCKET,
-            "processed/merged_data.csv",
-            csv_buffer,
-            length=len(csv_bytes),
-            content_type="text/csv",
-        )
-        print(f"[preprocess] Uploaded merged_data.csv to MinIO bucket '{MINIO_BUCKET}'")
-    except Exception as e:
-        print(f"[preprocess] WARNING: MinIO upload skipped ({e}). Data tetap tersimpan lokal.")
+    upload_dataframe_csv_to_minio(df, "processed/merged_data.csv", "[preprocess]")
 
 
 def main():

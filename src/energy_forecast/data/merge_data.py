@@ -1,17 +1,11 @@
-import io
-
 import holidays
 import pandas as pd
-from minio import Minio
 
 from energy_forecast.config import (
-    MINIO_ACCESS_KEY,
-    MINIO_BUCKET,
-    MINIO_ENDPOINT,
-    MINIO_SECRET_KEY,
     PROCESSED_DIR,
     RAW_DIR,
 )
+from energy_forecast.storage import upload_dataframe_csv_to_minio
 
 
 def load_consumption():
@@ -88,25 +82,7 @@ def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def save_to_minio(df: pd.DataFrame) -> None:
-    client = Minio(
-        MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-        secure=False,
-    )
-    if not client.bucket_exists(MINIO_BUCKET):
-        client.make_bucket(MINIO_BUCKET)
-
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
-    csv_buffer = io.BytesIO(csv_bytes)
-    client.put_object(
-        MINIO_BUCKET,
-        "processed/merged_data.csv",
-        csv_buffer,
-        length=len(csv_bytes),
-        content_type="text/csv",
-    )
-    print(f"Uploaded merged_data.csv to MinIO bucket '{MINIO_BUCKET}'")
+    upload_dataframe_csv_to_minio(df, "processed/merged_data.csv", "[merge_data]")
 
 
 def register_feast_features(df: pd.DataFrame) -> None:

@@ -1,11 +1,9 @@
-import io
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 import requests
-from minio import Minio
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -20,14 +18,11 @@ from energy_forecast.config import (  # noqa: E402
     HISTORY_START_DATE,
     LATITUDE,
     LONGITUDE,
-    MINIO_ACCESS_KEY,
-    MINIO_BUCKET,
-    MINIO_ENDPOINT,
-    MINIO_SECRET_KEY,
     OPEN_METEO_ARCHIVE_URL,
     RAW_DIR,
     WEATHER_VARIABLES,
 )
+from energy_forecast.storage import upload_dataframe_csv_to_minio  # noqa: E402
 
 
 def fetch_energy_from_api() -> pd.DataFrame:
@@ -86,27 +81,7 @@ def save_with_timestamp(df: pd.DataFrame, stem: str) -> tuple[Path, Path]:
 
 def upload_to_minio(df: pd.DataFrame, object_name: str) -> None:
     """Upload ke MinIO (fail-safe: tidak menggagalkan ingestion jika MinIO offline)."""
-    try:
-        client = Minio(
-            MINIO_ENDPOINT.replace("http://", "").replace("https://", ""),
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=MINIO_ENDPOINT.startswith("https://"),
-        )
-        if not client.bucket_exists(MINIO_BUCKET):
-            client.make_bucket(MINIO_BUCKET)
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
-        csv_buffer = io.BytesIO(csv_bytes)
-        client.put_object(
-            MINIO_BUCKET,
-            f"raw/{object_name}",
-            csv_buffer,
-            length=len(csv_bytes),
-            content_type="text/csv",
-        )
-        print(f"[ingest] Uploaded {object_name} to MinIO bucket '{MINIO_BUCKET}'")
-    except Exception as e:
-        print(f"[ingest] WARNING: MinIO upload skipped ({e}). Data tetap tersimpan lokal.")
+    upload_dataframe_csv_to_minio(df, f"raw/{object_name}", "[ingest]")
 
 
 def ingest_all() -> None:

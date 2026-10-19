@@ -1,10 +1,12 @@
+import os
+
 COUNTRY = "DK"
 COUNTRY_NAME = "Denmark"
 TIMEZONE = "Europe/Copenhagen"
 
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", Path(__file__).resolve().parent.parent.parent))
 DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
@@ -33,13 +35,13 @@ FETCH_LIMIT = 10000
 
 REFRESH_INTERVAL_MINUTES = 5
 
-MINIO_ENDPOINT = "http://localhost:9000"
-MINIO_ACCESS_KEY = "minioadmin"
-MINIO_SECRET_KEY = "minioadmin"
-MINIO_BUCKET = "energy-forecast"
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "energy-forecast")
 
-MLFLOW_TRACKING_URI = "http://localhost:5000"
-MLFLOW_REGISTRY_URI = "http://localhost:5000"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+MLFLOW_REGISTRY_URI = os.getenv("MLFLOW_REGISTRY_URI", MLFLOW_TRACKING_URI)
 
 DRIFT_LOG_PATH = LOGS_DIR / "drift_log.csv"
 DRIFT_PSI_THRESHOLD = 0.1
