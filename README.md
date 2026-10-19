@@ -42,7 +42,7 @@ energy-forecast-dk/
 │   │   ├── consumption.csv            # latest snapshot (overwritten tiap run, tapi arsip timestamp dipertahankan)
 │   │   ├── consumption_YYYYMMDD_HHMMSS.csv  # arsip non-destruktif
 │   │   ├── weather.csv / weather_*.csv
-│   │   ├── sample_consumption.csv   # 100 baris sampel (di-commit, lolos .gitignore)
+│   │   ├── sample_consumption.csv   # 100 baris sampel lokal; pointer .dvc dilacak Git
 │   │   └── sample_weather.csv
 │   └── processed/                # Merged feature table
 │       ├── merged_data.csv
@@ -126,18 +126,20 @@ pip install -e ".[airflow]"
 pip install -e ".[all]"
 ```
 
-## Pemenuhan Tugas
+## [LK-4] Implementasi Penarikan Data (Data Ingestion) Dinamis dan Automasi Prapemrosesan
 
 > **Luaran Wajib:** `src/ingest_data.py`, `src/preprocess.py`, `data/raw/sample_*.csv`, `src/data/`.
 
-### 0. Persiapan Lingkungan
+### Metode Pengerjaan Aktivitas
+
+#### 1. Persiapan Lingkungan
 Pastikan folder `src/data` dan `data/raw` tersedia sudah disiapkan via `src/data/.gitkeep` dan `data/raw/.gitkeep`. Di Codespaces/Linux:
 ```bash
 ls -R src/data data/raw
 # src/data/.gitkeep ada, data/raw/ terbuat otomatis oleh skrip (RAW_DIR.mkdir)
 ```
 
-### 1. Penarikan Data Dinamis
+#### 2. Implementasi Penarikan Data Dinamis
 Menggunakan `requests` (sesuai opsi BeautifulSoup/Selenium/Requests) untuk menarik data dinamis dari:
 - **Energi Data Service** (`https://api.energidataservice.dk/dataset/GenerationProdTypeExchange`, `GrossCon` → `ConsumptionMW`) tanpa API key
 - **Open-Meteo Archive** (`https://archive-api.open-meteo.com/v1/archive`) untuk cuaca Copenhagen
@@ -159,9 +161,9 @@ Output:
 - `data/raw/consumption.csv` (latest snapshot untuk `merge_data`)
 - `data/raw/weather_YYYYMMDD_HHMMSS.csv` + `data/raw/weather.csv`
 - Upload ke MinIO (fail-safe: tetap sukses lokal walau MinIO offline)
-- Sampel commit: `data/raw/sample_consumption.csv`, `data/raw/sample_weather.csv` (100 baris, lolos `.gitignore` via `!sample_*.csv`)
+- Sampel lokal: `data/raw/sample_consumption.csv`, `data/raw/sample_weather.csv` (100 baris); pointer `.dvc` dilacak Git.
 
-### 2. Simulasi Periodik — Rerun Tanpa Overwrite Destruktif
+#### 3. Simulasi Periodik — Rerun Tanpa Overwrite Destruktif
 Setiap rerun membuat file timestamp baru:
 ```bash
 python src/ingest_data.py
@@ -175,9 +177,9 @@ python src/ingest_data.py && python src/ingest_data.py && ls data/raw/consumptio
 ```
 Logika ada di `src/ingest_data.py:save_with_timestamp` dan `src/energy_forecast/data/fetch_energy_dk.py:37-48` / `fetch_weather.py:16-27`.
 
-> Penjelasan lengkap mekanisme versioning ini (dan mengapa krusial untuk reproduksibilitas model) ada di section [Data Versioning & Reproducibility](#data-versioning--reproducibility).
+> Penjelasan mekanisme versioning ini ada pada bagian [LK-05](#lk-05-manajemen-data-versioning-menggunakan-dvc).
 
-### 3. Prapemrosesan — `src/preprocess.py`
+#### 4. Automasi Prapemrosesan — `src/preprocess.py`
 Membersihkan data mentah agar siap ekstraksi fitur / training:
 ```bash
 python src/preprocess.py
@@ -191,11 +193,154 @@ Langkah di `src/preprocess.py` / `src/energy_forecast/data/merge_data.py:48-90`:
 - `clean_missing_values()` → laporan `df.isna().sum()`, info `lag NaN 168 jam pertama` (wajar, di-drop saat training)
 - Simpan `data/processed/merged_data.csv` + info `sample_merged_data.csv`, upload MinIO
 
+#### 5. Sinkronisasi Repositori
+
+Skrip `src/ingest_data.py` dan `src/preprocess.py` disimpan di Git. Dataset penuh dilacak melalui pointer DVC, sedangkan file CSV lokal diabaikan Git agar repositori tetap ringan.
+
+### Bentuk dan Format Luaran
+
+1. Skrip Python `src/ingest_data.py` dan `src/preprocess.py`.
+2. Data mentah CSV di `data/raw/`, dengan pointer DVC yang dapat di-commit.
+3. Petunjuk menjalankan ingestion dan preprocessing pada bagian ini.
+
+## [LK-05] Manajemen Data Versioning Menggunakan DVC
+
+Dataset mentah dari LK-4 dilacak dengan DVC melalui file penunjuk di `data/raw/*.csv.dvc`. Saat dataset bertambah, saya dapat menjalankan `dvc add` lagi dan membandingkan perubahan hash penunjuknya di Git. File CSV penuh tetap berada di luar Git, sedangkan MinIO dipakai sebagai object storage.
+
+### Petunjuk Pengerjaan
+
+```bash
+dvc status
+dvc add data/raw/consumption.csv data/raw/weather.csv
+git diff -- data/raw/consumption.csv.dvc data/raw/weather.csv.dvc
+# Setelah dua versi data ter-commit, bandingkan dengan: dvc diff HEAD~1 HEAD
+```
+
+### Alur Penambahan Versi Data (yang Sudah Diimplementasikan)
+
+Setiap kali pipeline ingestion dijalankan, data **tidak pernah ditimpa secara destruktif**. Mekanisme versioning bekerja di tiga lapis:
+
+1. **Arsip timestamp non-destruktif (lapis utama)** — `save_with_timestamp()` (`src/ingest_data.py:71-84`) dan `save_to_local()` (`src/energy_forecast/data/fetch_energy_dk.py:38-48`, `src/energy_forecast/data/fetch_weather.py:16-24`) menulis **dua** file sekaligus:
+   - `data/raw/{nama}_YYYYMMDD_HHMMSS.csv` — arsip immutable dengan timestamp **UTC** (contoh: `consumption_20261011_093000.csv`)
+   - `data/raw/{nama}.csv` — snapshot `latest` yang dipakai downstream (`merge_data`)
+
+   Rerun 3x menghasilkan 3 arsip berbeda + 1 latest; file lama tidak pernah dihapus.
+
+2. **Object storage (MinIO)** — snapshot terbaru di-upload ke bucket `energy-forecast` (dibuat otomatis bila belum ada) sebagai `raw/consumption.csv`, `raw/weather.csv`, dan `processed/merged_data.csv`. Upload memakai helper bersama di `src/energy_forecast/storage.py` dan bersifat **fail-safe**: pipeline tetap sukses walau MinIO offline.
+
+3. **Traceability ke model (MLflow)** — setiap training run mencatat parameter data (`train_rows`, `test_rows`, `n_features`) dan mendaftarkan model ke MLflow Registry (`src/energy_forecast/models/train_baseline.py:47-71`), sehingga satu model version bisa dilacak ke run dan snapshot data yang menghasilkannya.
+
+Alur lengkapnya:
+
+```
+[Energi Data Service / Open-Meteo API]  ← nilai "terkini", bisa direvisi
+        │  fetch (requests)
+        ▼
+data/raw/consumption_<UTC timestamp>.csv  ← ARSIP VERSI (immutable, non-destruktif)
+data/raw/consumption.csv                  ← latest snapshot (input merge_data)
+        │  merge_data (deterministik: clean → merge → fitur → lag)
+        ▼
+data/processed/merged_data.csv            ← feature table
+        │  training (MLflow run + Model Registry)
+        ▼
+models/baseline_model.joblib              ← tercatat: run_id, train_rows, features
+```
+
+### Cara Mereproduksi Model dari Versi Data Tertentu
+
+Karena setiap arsip timestamp adalah **snapshot penuh** (bukan delta), reproduksi hanya butuh tiga langkah:
+
+```bash
+# 1. Pilih versi dataset yang mau direproduksi
+ls -lt data/raw/consumption_*.csv
+
+# 2. Jadikan arsip itu sebagai input preprocessing
+cp data/raw/consumption_20261011_093000.csv data/raw/consumption.csv
+cp data/raw/weather_20261011_093000.csv     data/raw/weather.csv
+
+# 3. Rebuild feature table dan retrain
+python -m energy_forecast.data.merge_data
+python -m energy_forecast.models.train_baseline
+```
+
+Kombinasi **(kode Git commit + pointer DVC dataset + parameter model)** mencatat versi data dan konfigurasi yang dipakai dalam eksperimen.
+
+### Mengapa Versioning Dataset Krusial untuk Reproduksibilitas Model
+
+1. **API bersifat "moving target".** Energi Data Service dan Open-Meteo selalu mengembalikan nilai terbaru, dan data historis bisa direvisi (koreksi meter, backfill, penyesuaian DST). Tanpa snapshot, menjalankan ulang kode yang sama nyatanya menghasilkan dataset yang berbeda.
+
+2. **Kode saja tidak cukup untuk reproduksi.** Model = f(data, kode, hyperparameter, seed). Git hanya mem-version **kode**; kalau dataset berubah diam-diam, "same code" ≠ "same model". Arsip timestamp mengunci komponen data dari persamaan itu.
+
+3. **Debugging dan audit menjadi mungkin.** Ketika metrik memburuk (mis. MAPE naik 3% → 7%), kita bisa melatih ulang pada data versi lama vs baru untuk membuktikan apakah penyebabnya perubahan data, bukan bug kode. Ini sekaligus landasan dari drift detection yang dipakai sebagai retraining trigger di project ini.
+
+4. **Rollback tanpa perlu fetch ulang.** Bila dataset terbaru ternyata korup (API error/429 separuh jalan), kembali ke arsip timestamp sebelumnya cukup dengan satu `cp` — tanpa harus menunggu API menyediakan ulang data historis.
+
+5. **Kolaborasi dan CI tetap ringan.** Pointer `data/raw/sample_*.csv.dvc` dilacak Git, sementara file CSV dan dataset penuh tetap di luar Git. Data dapat diambil dari penyimpanan DVC tanpa membuat repositori membengkak.
+
+### Keterbatasan & Roadmap
+
+- Snapshot di MinIO saat ini menyimpan versi **latest** per object; untuk retensi penuh sisi server, object versioning S3 bisa diaktifkan pada bucket `energy-forecast` (via MinIO Console atau `mc version enable`) — arsip timestamp lokal tetap menjadi sumber kebenaran utama.
+- `data/processed/merged_data.csv` ditimpa setiap run; reprodusibilitasnya dijamin oleh preprocessing yang deterministik ditambah arsip raw yang lengkap.
+- DVC sudah dipakai untuk melacak dataset raw melalui pointer `.dvc`; pengembangan berikutnya adalah menyimpan beberapa versi objek MinIO agar arsip di remote juga dapat diaudit.
+
+### Bentuk Luaran
+
+1. Pointer `data/raw/*.csv.dvc` dan aturan `.gitignore` untuk dataset.
+2. Screenshot lokal `dvc status` atau `dvc diff` ketika memperlihatkan perubahan dua versi data.
+3. Penjelasan alur penambahan versi data pada README ini.
+
+## [LK-6] Manajemen Eksperimen dan Pelacakan Metrik Pemodelan dengan MLflow
+
+Proyek LK-01 ini memakai regresi untuk memprediksi konsumsi listrik Denmark. Pada tahap ini saya menggunakan MLflow untuk mencatat tiga variasi hyperparameter dan membandingkan hasilnya melalui dashboard.
+
+### Metode Pengerjaan Aktivitas
+
+#### Eksperimen tiga variasi dengan MLflow
+
+`src/energy_forecast/models/train.py` memakai ulang
+`energy_forecast.models.train_baseline` untuk tiga kombinasi Random Forest.
+Dataset latih adalah `data/processed/merged_data.csv`; skrip memeriksa
+bahwa `consumption.csv` dan `weather.csv` sesuai hash pada pointer DVC LK-05.
+Ketiga run memakai split kronologis yang sama (80% latih, 20% uji) dan mencatat
+parameter, hash dataset, RMSE, MAE, MAPE, serta artefak model. Run dengan RMSE
+terendah didaftarkan ke MLflow Model Registry dan disimpan sebagai
+`models/baseline_model.joblib` untuk kode prediksi yang sudah ada.
+
+```bash
+pip install -e .
+# Jika data/raw/*.csv belum tersedia: dvc pull
+python src/preprocess.py
+mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
+# Di terminal Codespaces kedua:
+python -m energy_forecast.models.train
+```
+
+Buka tab **Ports** Codespaces untuk port 5000, lalu di MLflow UI pilih eksperimen
+`energy-forecast-baseline` > **Training runs**. Tampilan grafik di sebelah daftar
+run memperlihatkan perbandingan MAE, MAPE, dan RMSE. Luaran pelaksanaan tersimpan
+secara lokal di `docs/` (diabaikan Git, kecuali `.gitkeep`):
+`docs/experiment_results.csv`, `docs/model_metadata.md`, dan
+`docs/report_mlflow.pdf` (berisi screenshot UI Docker). Berkas laporan dan
+skrip pembuat PDF disimpan lokal untuk kebutuhan tugas pribadi.
+
+Screenshot laporan saat ini diambil dari **MLflow 2.10 dalam Docker lokal**
+pada port 5000. Daftar UI menampilkan enam run karena tiga variasi dijalankan
+dua kali saat pengujian integrasi; CSV dan metadata menunjukkan eksekusi terakhir
+yang memilih Registry versi 2. Folder `docs/` diabaikan Git (kecuali `.gitkeep`),
+sehingga bukti dashboard perlu dibuat ulang di Codespaces jika dosen
+mensyaratkan lingkungan tersebut.
+
+### Bentuk dan Format Luaran
+
+1. Kode pelatihan: `src/energy_forecast/models/train.py`, dengan logging parameter, metrik, dan model ke MLflow.
+2. Laporan teknis PDF: `docs/report_mlflow.pdf`, berisi screenshot daftar run dan grafik perbandingan metrik.
+3. Metadata model: `docs/model_metadata.md` dan ringkasan run di `docs/experiment_results.csv`.
+
 ## Running (MLOps Pipeline Umum)
 
 ### Daily data pipeline (orkestrasi)
 
-Fetch new data dan rebuild feature table (sama dengan poin 1-3 di atas, tapi via orchestrator):
+Fetch new data dan rebuild feature table (menggabungkan ingestion dan preprocessing pada LK-4 melalui orchestrator):
 
 ```bash
 python -m energy_forecast.orchestration.daily_pipeline
@@ -233,41 +378,6 @@ python -m energy_forecast.models.train_deep_learning
 ```
 
 Both scripts log metrics (RMSE, MAPE) and register models to the **MLflow Registry**.
-
-### Eksperimen tiga variasi untuk tugas MLflow
-
-`src/energy_forecast/models/train.py` memakai ulang
-`energy_forecast.models.train_baseline` untuk tiga kombinasi Random Forest.
-Dataset latih adalah `data/processed/merged_data.csv`; skrip memeriksa
-bahwa `consumption.csv` dan `weather.csv` sesuai hash pada pointer DVC LK-05.
-Ketiga run memakai split kronologis yang sama (80% latih, 20% uji) dan mencatat
-parameter, hash dataset, RMSE, MAE, MAPE, serta artefak model. Run dengan RMSE
-terendah didaftarkan ke MLflow Model Registry dan disimpan sebagai
-`models/baseline_model.joblib` untuk kode prediksi yang sudah ada.
-
-```bash
-pip install -e .
-# Jika data/raw/*.csv belum tersedia: dvc pull
-python src/preprocess.py
-mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
-# Di terminal Codespaces kedua:
-python -m energy_forecast.models.train
-```
-
-Buka tab **Ports** Codespaces untuk port 5000, lalu di MLflow UI pilih eksperimen
-`energy-forecast-baseline` > **Training runs**. Tampilan grafik di sebelah daftar
-run memperlihatkan perbandingan MAE, MAPE, dan RMSE. Luaran pelaksanaan tersimpan
-secara lokal di `docs/` (diabaikan Git, kecuali `.gitkeep`):
-`docs/experiment_results.csv`, `docs/model_metadata.md`, dan
-`docs/report_mlflow.pdf` (berisi screenshot UI Docker). Berkas laporan dan
-skrip pembuat PDF disimpan lokal untuk kebutuhan tugas pribadi.
-
-Screenshot laporan saat ini diambil dari **MLflow 2.10 dalam Docker lokal**
-pada port 5000. Daftar UI menampilkan enam run karena tiga variasi dijalankan
-dua kali saat pengujian integrasi; CSV dan metadata menunjukkan eksekusi terakhir
-yang memilih Registry versi 2. Folder `docs/` diabaikan Git (kecuali `.gitkeep`),
-sehingga bukti dashboard perlu dibuat ulang di Codespaces jika dosen
-mensyaratkan lingkungan tersebut.
 
 ### Model serving (FastAPI)
 
@@ -362,75 +472,6 @@ All parameters live in `src/energy_forecast/config.py`:
 7. **Prediction** — `energy_forecast.predict.predict_future` forecasts the next 24h.
 8. **Monitoring** — `evaluate_model` + `check_trigger` detect drift and auto-retrain (MAPE > 5% OR drift signals exceeded).
 9. **Serving** — FastAPI serves predictions via REST API, containerized with Docker.
-
-## Data Versioning & Reproducibility
-
-### Alur Penambahan Versi Data (yang Sudah Diimplementasikan)
-
-Setiap kali pipeline ingestion dijalankan, data **tidak pernah ditimpa secara destruktif**. Mekanisme versioning bekerja di tiga lapis:
-
-1. **Arsip timestamp non-destruktif (lapis utama)** — `save_with_timestamp()` (`src/ingest_data.py:71-84`) dan `save_to_local()` (`src/energy_forecast/data/fetch_energy_dk.py:38-48`, `src/energy_forecast/data/fetch_weather.py:16-24`) menulis **dua** file sekaligus:
-   - `data/raw/{nama}_YYYYMMDD_HHMMSS.csv` — arsip immutable dengan timestamp **UTC** (contoh: `consumption_20261011_093000.csv`)
-   - `data/raw/{nama}.csv` — snapshot `latest` yang dipakai downstream (`merge_data`)
-
-   Rerun 3x menghasilkan 3 arsip berbeda + 1 latest; file lama tidak pernah dihapus.
-
-2. **Object storage (MinIO)** — snapshot terbaru di-upload ke bucket `energy-forecast` (dibuat otomatis bila belum ada) sebagai `raw/consumption.csv`, `raw/weather.csv`, dan `processed/merged_data.csv`. Upload memakai helper bersama di `src/energy_forecast/storage.py` dan bersifat **fail-safe**: pipeline tetap sukses walau MinIO offline.
-
-3. **Traceability ke model (MLflow)** — setiap training run mencatat parameter data (`train_rows`, `test_rows`, `n_features`) dan mendaftarkan model ke MLflow Registry (`src/energy_forecast/models/train_baseline.py:47-71`), sehingga satu model version bisa dilacak ke run dan snapshot data yang menghasilkannya.
-
-Alur lengkapnya:
-
-```
-[Energi Data Service / Open-Meteo API]  ← nilai "terkini", bisa direvisi
-        │  fetch (requests)
-        ▼
-data/raw/consumption_<UTC timestamp>.csv  ← ARSIP VERSI (immutable, non-destruktif)
-data/raw/consumption.csv                  ← latest snapshot (input merge_data)
-        │  merge_data (deterministik: clean → merge → fitur → lag)
-        ▼
-data/processed/merged_data.csv            ← feature table
-        │  training (MLflow run + Model Registry)
-        ▼
-models/baseline_model.joblib              ← tercatat: run_id, train_rows, features
-```
-
-### Cara Mereproduksi Model dari Versi Data Tertentu
-
-Karena setiap arsip timestamp adalah **snapshot penuh** (bukan delta), reproduksi hanya butuh tiga langkah:
-
-```bash
-# 1. Pilih versi dataset yang mau direproduksi
-ls -lt data/raw/consumption_*.csv
-
-# 2. Jadikan arsip itu sebagai input preprocessing
-cp data/raw/consumption_20261011_093000.csv data/raw/consumption.csv
-cp data/raw/weather_20261011_093000.csv     data/raw/weather.csv
-
-# 3. Rebuild feature table dan retrain
-python -m energy_forecast.data.merge_data
-python -m energy_forecast.models.train_baseline
-```
-
-Kombinasi **(kode Git commit + file `consumption_<timestamp>.csv`)** kini menjadi definisi eksperimen yang lengkap dan bisa diulang kapan saja.
-
-### Mengapa Versioning Dataset Krusial untuk Reproduksibilitas Model
-
-1. **API bersifat "moving target".** Energi Data Service dan Open-Meteo selalu mengembalikan nilai terbaru, dan data historis bisa direvisi (koreksi meter, backfill, penyesuaian DST). Tanpa snapshot, menjalankan ulang kode yang sama nyatanya menghasilkan dataset yang berbeda.
-
-2. **Kode saja tidak cukup untuk reproduksi.** Model = f(data, kode, hyperparameter, seed). Git hanya mem-version **kode**; kalau dataset berubah diam-diam, "same code" ≠ "same model". Arsip timestamp mengunci komponen data dari persamaan itu.
-
-3. **Debugging dan audit menjadi mungkin.** Ketika metrik memburuk (mis. MAPE naik 3% → 7%), kita bisa melatih ulang pada data versi lama vs baru untuk membuktikan apakah penyebabnya perubahan data, bukan bug kode. Ini sekaligus landasan dari drift detection yang dipakai sebagai retraining trigger di project ini.
-
-4. **Rollback tanpa perlu fetch ulang.** Bila dataset terbaru ternyata korup (API error/429 separuh jalan), kembali ke arsip timestamp sebelumnya cukup dengan satu `cp` — tanpa harus menunggu API menyediakan ulang data historis.
-
-5. **Kolaborasi dan CI tetap ringan.** `data/raw/sample_*.csv` (100 baris) di-commit sebagai contoh format dan smoke-test pipeline, sementara dataset penuh tetap di luar Git (repo tidak membengkak) namun tersedia lengkap di folder lokal dan MinIO.
-
-### Keterbatasan & Roadmap
-
-- Snapshot di MinIO saat ini menyimpan versi **latest** per object; untuk retensi penuh sisi server, object versioning S3 bisa diaktifkan pada bucket `energy-forecast` (via MinIO Console atau `mc version enable`) — arsip timestamp lokal tetap menjadi sumber kebenaran utama.
-- `data/processed/merged_data.csv` ditimpa setiap run; reprodusibilitasnya dijamin oleh preprocessing yang deterministik ditambah arsip raw yang lengkap.
-- Langkah naik berikutnya (opsional): **DVC** atau **lakeFS** untuk versioning dataset skala besar dengan pointer versi yang bisa di-commit langsung ke Git.
 
 ## Troubleshooting
 
