@@ -18,10 +18,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+report = ["Pillow"]
 deep-learning = ["tensorflow"]
 prefect = ["prefect"]
 airflow = ["apache-airflow"]
-serving = ["fastapi", "uvicorn", "prometheus-client"]
+serving = [
+    "fastapi", "uvicorn", "prometheus-client",
+    "mlflow==3.17.2", "numpy==2.4.6", "pandas==3.0.5",
+    "psutil==7.0.0", "scipy==1.15.1", "skops==0.14.0",
+]
 feast = ["feast"]
 all = [
     "tensorflow",

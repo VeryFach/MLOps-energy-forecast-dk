@@ -3,13 +3,13 @@ import time
 
 import mlflow
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi import Request
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel
 
-from energy_forecast.config import MLFLOW_TRACKING_URI, MODELS_DIR, PROCESSED_DIR
+from energy_forecast.config import MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI, PROCESSED_DIR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -72,42 +72,22 @@ def load_model():
     global model, loaded_model_version
     try:
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
         client = mlflow.MlflowClient()
-        versions = client.search_model_versions(f"name='{model_name}'")
-        if versions:
-            latest_version = max(versions, key=lambda v: int(v.version))
-            model_uri = latest_version.source
-            model = mlflow.sklearn.load_model(model_uri)
-            loaded_model_version = latest_version.version
-            logger.info(f"Loaded model {model_name} version {latest_version.version}")
-            return latest_version.version
-        else:
-            logger.warning(
-                "No model versions found in MLflow Registry. Using local fallback."
-            )
-            from joblib import load as joblib_load
-
-            local_path = MODELS_DIR / "baseline_model.joblib"
-            if local_path.exists():
-                model = joblib_load(local_path)
-                loaded_model_version = "local"
-                logger.info(f"Loaded local model from {local_path}")
-                return "local"
-            raise FileNotFoundError("No model available")
+        versions = [version for version in client.search_model_versions(f"name='{model_name}'")
+                    if version.current_stage == "Production"]
+        if len(versions) != 1:
+            raise RuntimeError(f"Expected one Production version of {model_name}; found {len(versions)}")
+        production = versions[0]
+        model = mlflow.pyfunc.load_model(f"models:/{model_name}/Production")
+        loaded_model_version = str(production.version)
+        logger.info("Loaded Production model %s version %s", model_name, production.version)
+        return loaded_model_version
     except Exception as e:
-        logger.error(f"Failed to load model from MLflow: {e}")
-        try:
-            from joblib import load as joblib_load
-
-            local_path = MODELS_DIR / "baseline_model.joblib"
-            model = joblib_load(local_path)
-            loaded_model_version = "local-fallback"
-            logger.info(f"Fallback: loaded local model from {local_path}")
-            return "local-fallback"
-        except Exception as e2:
-            logger.error(f"Local fallback also failed: {e2}")
-            loaded_model_version = None
-            return None
+        model = None
+        loaded_model_version = None
+        logger.error("Failed to load Production model from MLflow: %s", e)
+        return None
 
 
 @app.on_event("startup")
@@ -117,10 +97,12 @@ async def startup_event():
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
+    if model is None:
+        load_model()
     return HealthResponse(
         status="healthy" if model is not None else "degraded",
         model_loaded=model is not None,
-        model_version=load_model() if model is None else loaded_model_version,
+        model_version=loaded_model_version,
     )
 
 
@@ -134,7 +116,7 @@ async def predict(request: PredictionRequest):
     if model is None:
         load_model()
         if model is None:
-            raise RuntimeError("Model not available")
+            raise HTTPException(status_code=503, detail="Production model not available")
 
     start = time.perf_counter()
 

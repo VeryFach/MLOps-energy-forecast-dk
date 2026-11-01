@@ -64,6 +64,9 @@ image/*
 # Dokumen baru tetap lokal; file docs yang sudah dilacak Git tetap dilacak
 /docs/*
 !/docs/.gitkeep
+!/docs/.pdf
+!/docs/.dvc
+!/docs/.png
 
 # Skrip pribadi baru tetap lokal; skrip yang sudah dilacak Git tetap dilacak
-/scripts/*
+/scripts/
