@@ -17,6 +17,12 @@ services:
     depends_on:
       - mlflow
       - minio
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; h=json.load(urllib.request.urlopen('http://localhost:8000/health')); assert h['status']=='healthy' and h['model_loaded']"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
     labels:
       - "prometheus.scrape=true"

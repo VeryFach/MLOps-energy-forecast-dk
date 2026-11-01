@@ -336,6 +336,60 @@ mensyaratkan lingkungan tersebut.
 2. Laporan teknis PDF: `docs/report_mlflow.pdf`, berisi screenshot daftar run dan grafik perbandingan metrik.
 3. Metadata model: `docs/model_metadata.md` dan ringkasan run di `docs/experiment_results.csv`.
 
+## [LK-07] Model Registry, Versioning, dan Kesiapan Inferensi
+
+Pada stack Docker, model aktif untuk inferensi adalah **`energy-forecast-baseline`
+v2 (Production)** dari run `930911e3153f4b50a45e7d48cf0585fc`, dengan RMSE
+**234,73 MW** pada 20% data uji terakhir. Versi v3 memakai variasi parameter
+200 pohon (run `40fb7233ef4f422baabf2a19fa54262b`) dan berada di
+**Staging** karena RMSE-nya **258,75 MW**. Keduanya memakai split kronologis dan
+snapshot data yang sama. Transisi melalui API adalah `None -> Staging ->
+Production` untuk v2 dan `None -> Staging` untuk v3. Versi v1 adalah registrasi
+awal dari konfigurasi yang sama dengan v2 dan tetap berstatus `None`.
+
+Pada MLflow UI Docker 2.10, sakelar **New model registry UI** di kanan atas
+halaman model menyembunyikan kolom **Stage** saat aktif. Matikan sakelar itu
+untuk melihat label `Production` pada v2 dan `Staging` pada v3. Status stage
+tetap tersimpan di registry meskipun kolomnya tidak tampil.
+
+Layanan FastAPI memuat model melalui URI
+`models:/energy-forecast-baseline/Production` dan hanya menyajikan versi yang
+berstatus Production. Jika tidak ada tepat satu versi Production, health check
+menjadi degraded. Mulai ulang layanan setelah mengubah stage agar model yang
+tersimpan di memori ikut berubah.
+Extra `serving` memasang versi pandas, NumPy, SciPy, skops, dan psutil yang
+tercatat pada artefak Production. MLflow memakai versi klien 3.17.2 karena
+versi 3.15.1 pada artefak mensyaratkan `pandas<3`, sedangkan artefak sendiri
+mencatat `pandas==3.0.5`. Kombinasi serving ini telah diuji lewat `pyfunc` dan
+API Docker.
+
+Metadata versi terpilih disimpan di
+[`registry/production_model.yaml.dvc`](registry/production_model.yaml.dvc).
+File YAML lokal `registry/production_model.yaml` mencatat model URI, run ID,
+metrik, parameter, dan hash yang cocok dengan pointer
+`data/raw/consumption.csv.dvc` serta `data/raw/weather.csv.dvc`.
+Pointer DVC memungkinkan metadata itu dilacak bersama silsilah dataset.
+Database dan artefak MLflow Docker berada pada volume `mlflow-data` yang tidak
+masuk Git. Registry SQLite lokal di `mlflow.db` adalah backend terpisah dan
+memiliki penomoran versi berbeda. Lingkungan baru perlu menjalankan eksperimen
+LK-06 lagi atau memakai volume MLflow serta remote DVC yang sama.
+
+```bash
+pip install -e ".[report]"
+# Jalankan LK-06 dahulu jika backend MLflow belum mempunyai minimal dua run.
+docker compose up -d --build api
+python scripts/publish_model_registry.py --tracking-uri http://localhost:5000
+python scripts/verify_registry_inference.py --tracking-uri http://localhost:5000
+dvc status
+```
+
+Kedua skrip memakai `sqlite:///mlflow.db` secara default; opsi di atas memilih
+MLflow Docker. Bukti pelaksanaan Docker tersedia di
+[`docs/report_model_registry.pdf`](docs/report_model_registry.pdf):
+screenshot daftar versi dan detail stage Production, pilihan metrik, lineage
+DVC, serta hasil uji `mlflow.pyfunc` dan API. PDF dapat dibuat ulang dengan
+`python scripts/build_registry_report.py` setelah screenshot UI diperbarui.
+
 ## Running (MLOps Pipeline Umum)
 
 ### Daily data pipeline (orkestrasi)

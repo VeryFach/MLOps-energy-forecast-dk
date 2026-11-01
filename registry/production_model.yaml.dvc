@@ -1,0 +1,5 @@
+outs:
+- md5: 55275d3dffa0a258e8c5ef706fed0707
+  size: 981
+  hash: md5
+  path: production_model.yaml
