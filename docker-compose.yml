@@ -28,6 +28,60 @@ services:
       - "prometheus.scrape=true"
       - "prometheus.port=8000"
 
+  ingestion:
+    build: .
+    command: ["python", "-m", "energy_forecast.orchestration.continuous_ingestion"]
+    environment:
+      - PROJECT_ROOT=/app
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=energy-forecast
+      - INGESTION_INTERVAL_MINUTES=${INGESTION_INTERVAL_MINUTES:-5}
+      - INGESTION_MAX_ATTEMPTS=${INGESTION_MAX_ATTEMPTS:-3}
+      - INGESTION_RETRY_DELAY_SECONDS=${INGESTION_RETRY_DELAY_SECONDS:-60}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - minio
+    healthcheck:
+      test: ["CMD", "python", "-m", "energy_forecast.orchestration.healthcheck", "--file", "/app/logs/ingestion.heartbeat", "--max-age-seconds", "900"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+  daily-retraining:
+    build: .
+    command: ["python", "-m", "energy_forecast.orchestration.daily_retraining"]
+    environment:
+      - PROJECT_ROOT=/app
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=energy-forecast
+      - RETRAINING_MAPE_THRESHOLD=${RETRAINING_MAPE_THRESHOLD:-5.0}
+      - DAILY_RETRAINING_HOUR=${DAILY_RETRAINING_HOUR:-1}
+      - DAILY_RETRAINING_MINUTE=${DAILY_RETRAINING_MINUTE:-0}
+      - DAILY_RETRAINING_RUN_ON_START=${DAILY_RETRAINING_RUN_ON_START:-false}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./models:/app/models
+    depends_on:
+      - mlflow
+      - minio
+    healthcheck:
+      test: ["CMD", "python", "-m", "energy_forecast.orchestration.healthcheck", "--file", "/app/logs/daily-retraining.heartbeat", "--max-age-seconds", "3600"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.10.0
     ports:
@@ -62,7 +116,7 @@ services:
   grafana:
     image: grafana/grafana:10.1.0
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin

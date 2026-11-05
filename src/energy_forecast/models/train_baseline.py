@@ -7,6 +7,7 @@ import mlflow.sklearn
 import pandas as pd
 from joblib import dump
 from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
     mean_absolute_error,
@@ -101,7 +102,21 @@ def train_once(n_estimators=100, max_depth=None, min_samples_leaf=1,
                 mlflow.log_artifacts(str(model_dir), artifact_path="model")
             model_uri = f"runs:/{run.info.run_id}/model"
         if register:
-            mlflow.register_model(model_uri, "energy-forecast-baseline")
+            registered = mlflow.register_model(model_uri, "energy-forecast-baseline")
+            client = MlflowClient()
+            client.transition_model_version_stage(
+                name="energy-forecast-baseline",
+                version=registered.version,
+                stage="Production",
+                archive_existing_versions=True,
+            )
+            client.set_registered_model_alias(
+                "energy-forecast-baseline", "champion", registered.version
+            )
+            print(
+                f"Model version {registered.version} promoted to Production",
+                flush=True,
+            )
 
         if register:
             MODELS_DIR.mkdir(parents=True, exist_ok=True)

@@ -454,6 +454,33 @@ airflow dags list
 airflow dags test energy_forecast_daily
 ```
 
+### Continuous data ingestion
+
+The Docker stack includes an `ingestion` service that fetches consumption and
+weather data, rebuilds the merged dataset, and repeats the cycle every five
+minutes by default:
+
+```bash
+docker compose up -d --build ingestion
+docker compose logs -f ingestion
+```
+
+Set `INGESTION_INTERVAL_MINUTES` in the environment to change the interval.
+The service preserves timestamped raw snapshots and updates the latest
+`data/raw/*.csv` files on every successful fetch.
+
+The `daily-retraining` service runs preprocessing and MAPE evaluation daily at
+01:00 Europe/Copenhagen. It retrains the baseline model only when the latest
+MAPE is greater than 5%:
+
+```bash
+docker compose up -d --build daily-retraining
+docker compose logs -f daily-retraining
+```
+
+Set `DAILY_RETRAINING_RUN_ON_START=true` to run one cycle immediately, for
+example when validating the deployment.
+
 ## Docker Deployment
 
 Jalankan stack Docker lokal (API + MinIO + MLflow + Prometheus + Grafana):

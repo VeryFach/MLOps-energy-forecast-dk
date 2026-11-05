@@ -74,14 +74,25 @@ def load_model():
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
         mlflow.set_registry_uri(MLFLOW_REGISTRY_URI)
         client = mlflow.MlflowClient()
-        versions = [version for version in client.search_model_versions(f"name='{model_name}'")
-                    if version.current_stage == "Production"]
-        if len(versions) != 1:
-            raise RuntimeError(f"Expected one Production version of {model_name}; found {len(versions)}")
-        production = versions[0]
-        model = mlflow.pyfunc.load_model(f"models:/{model_name}/Production")
-        loaded_model_version = str(production.version)
-        logger.info("Loaded Production model %s version %s", model_name, production.version)
+        try:
+            champion = client.get_model_version_by_alias(model_name, "champion")
+            model_uri = f"models:/{model_name}@champion"
+            loaded_model_version = str(champion.version)
+        except Exception:
+            versions = [
+                version
+                for version in client.search_model_versions(f"name='{model_name}'")
+                if version.current_stage == "Production"
+            ]
+            if len(versions) != 1:
+                raise RuntimeError(
+                    f"Expected one champion or Production version of {model_name}; "
+                    f"found {len(versions)} Production versions"
+                )
+            model_uri = f"models:/{model_name}/Production"
+            loaded_model_version = str(versions[0].version)
+        model = mlflow.pyfunc.load_model(model_uri)
+        logger.info("Loaded serving model %s version %s", model_name, loaded_model_version)
         return loaded_model_version
     except Exception as e:
         model = None

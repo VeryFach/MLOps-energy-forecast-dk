@@ -11,6 +11,6 @@
       ]
     }
   },
-  "forwardPorts": [8000, 5000, 9090, 3000],
+  "forwardPorts": [8000, 5000, 9090, 3001],
   "postCreateCommand": "pip install -e .[serving]"
 }
