@@ -69,7 +69,7 @@ def main():
             "data_md5": best["data_md5"],
             "mape": best["mape"],
             "max_mape": args.max_mape,
-            "git_sha": os.getenv("GITHUB_SHA", "local"),
+            "git_sha": os.getenv("MLOPS_SOURCE_SHA", "local"),
         }
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"Validation passed: MAPE {best['mape']:.4f}% <= {args.max_mape:.2f}%")
@@ -80,7 +80,7 @@ def main():
         report.get("status") != "passed"
         or report.get("run_id") != best["run_id"]
         or report.get("data_md5") != best["data_md5"]
-        or report.get("git_sha") != os.getenv("GITHUB_SHA", "local")
+        or report.get("git_sha") != os.getenv("MLOPS_SOURCE_SHA", "local")
         or report.get("max_mape") != args.max_mape
     ):
         raise ValueError(
