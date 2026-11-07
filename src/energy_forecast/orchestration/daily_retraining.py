@@ -32,12 +32,10 @@ def run_script(script: str) -> None:
 
 
 def should_retrain() -> bool:
-    import pandas as pd
     import mlflow
+    import pandas as pd
 
-    history_path = os.environ.get(
-        "MAPE_HISTORY_PATH", "/app/logs/mape_history.csv"
-    )
+    history_path = os.environ.get("MAPE_HISTORY_PATH", "/app/logs/mape_history.csv")
     history = pd.read_csv(history_path)
     if history.empty or "mape" not in history:
         raise ValueError(f"MAPE history is empty or invalid: {history_path}")
@@ -47,7 +45,7 @@ def should_retrain() -> bool:
     try:
         client.get_model_version_by_alias("energy-forecast-baseline", "champion")
         has_production_model = True
-    except Exception:
+    except Exception:  # noqa: BLE001 - older MLflow servers may not support aliases
         production_versions = list(
             client.search_model_versions("name='energy-forecast-baseline'")
         )
@@ -97,7 +95,9 @@ def main() -> None:
         try:
             run_daily_cycle()
         except (OSError, subprocess.CalledProcessError, ValueError) as error:
-            print(f"Daily retraining cycle failed: {error}", file=sys.stderr, flush=True)
+            print(
+                f"Daily retraining cycle failed: {error}", file=sys.stderr, flush=True
+            )
 
     while not _stop_requested:
         wait_seconds = seconds_until_next_run(run_hour, run_minute)

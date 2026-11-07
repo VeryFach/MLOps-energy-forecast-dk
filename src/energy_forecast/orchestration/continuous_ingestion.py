@@ -32,7 +32,9 @@ def run_module(module: str) -> None:
         raise ValueError("INGESTION_MAX_ATTEMPTS must be at least one")
 
     for attempt in range(1, max_attempts + 1):
-        print(f"=== Running {module} (attempt {attempt}/{max_attempts}) ===", flush=True)
+        print(
+            f"=== Running {module} (attempt {attempt}/{max_attempts}) ===", flush=True
+        )
         try:
             subprocess.run([sys.executable, "-m", module], check=True)
             return

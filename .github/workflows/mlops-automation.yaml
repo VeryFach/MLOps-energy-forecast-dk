@@ -45,6 +45,17 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Check required repository secrets
+        shell: bash
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: |
+          for name in TS_AUTHKEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is missing in GitHub Actions Secrets"
+              exit 1
+            fi
+          done
       - name: Connect to the service tailnet
         uses: tailscale/github-action@v4
         with:

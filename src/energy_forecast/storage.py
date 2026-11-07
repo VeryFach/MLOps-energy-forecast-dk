@@ -50,6 +50,8 @@ def upload_dataframe_csv_to_minio(
         )
         print(f"{log_prefix} Uploaded {object_name} to MinIO bucket '{MINIO_BUCKET}'")
         return True
-    except Exception as exc:
-        print(f"{log_prefix} WARNING: MinIO upload skipped ({exc}). Data tetap tersimpan lokal.")
+    except Exception as exc:  # noqa: BLE001 - ingestion must retain its local copy
+        print(
+            f"{log_prefix} WARNING: MinIO upload skipped ({exc}). Data tetap tersimpan lokal."
+        )
         return False

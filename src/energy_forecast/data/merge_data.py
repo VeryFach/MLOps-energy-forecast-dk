@@ -76,7 +76,11 @@ def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 
     # Info tambahan: berapa baris yang akan ter-drop jika training
     lag_cols = ["consumption_lag_24h", "consumption_lag_48h", "consumption_lag_168h"]
-    n_drop = df[lag_cols].isna().any(axis=1).sum() if all(c in df.columns for c in lag_cols) else 0
+    n_drop = (
+        df[lag_cols].isna().any(axis=1).sum()
+        if all(c in df.columns for c in lag_cols)
+        else 0
+    )
     print(f"Baris dengan lag NaN (butuh drop sebelum training): {n_drop}/{len(df)}")
     return df
 

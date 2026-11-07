@@ -3,13 +3,22 @@ import time
 
 import mlflow
 import pandas as pd
-from fastapi import FastAPI, HTTPException
-from fastapi import Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 from pydantic import BaseModel
 
-from energy_forecast.config import MLFLOW_TRACKING_URI, MLFLOW_REGISTRY_URI, PROCESSED_DIR
+from energy_forecast.config import (
+    MLFLOW_REGISTRY_URI,
+    MLFLOW_TRACKING_URI,
+    PROCESSED_DIR,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -78,7 +87,7 @@ def load_model():
             champion = client.get_model_version_by_alias(model_name, "champion")
             model_uri = f"models:/{model_name}@champion"
             loaded_model_version = str(champion.version)
-        except Exception:
+        except Exception:  # noqa: BLE001 - fall back for MLflow servers without aliases
             versions = [
                 version
                 for version in client.search_model_versions(f"name='{model_name}'")
@@ -92,9 +101,11 @@ def load_model():
             model_uri = f"models:/{model_name}/Production"
             loaded_model_version = str(versions[0].version)
         model = mlflow.pyfunc.load_model(model_uri)
-        logger.info("Loaded serving model %s version %s", model_name, loaded_model_version)
+        logger.info(
+            "Loaded serving model %s version %s", model_name, loaded_model_version
+        )
         return loaded_model_version
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - keep the API alive when registry is unavailable
         model = None
         loaded_model_version = None
         logger.error("Failed to load Production model from MLflow: %s", e)
@@ -127,7 +138,9 @@ async def predict(request: PredictionRequest):
     if model is None:
         load_model()
         if model is None:
-            raise HTTPException(status_code=503, detail="Production model not available")
+            raise HTTPException(
+                status_code=503, detail="Production model not available"
+            )
 
     start = time.perf_counter()
 
