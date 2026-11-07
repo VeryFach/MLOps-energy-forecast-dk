@@ -34,7 +34,7 @@ EXPERIMENT = "energy-forecast-baseline"
 REGISTERED_MODEL = "energy-forecast-baseline"
 VARIANTS = [
     {"n_estimators": 50, "max_depth": 8, "min_samples_leaf": 2},
-    {"n_estimators": 120, "max_depth": 16, "min_samples_leaf": 1},
+    {"n_estimators": 120, "max_depth": 8, "min_samples_leaf": 1},
     {"n_estimators": 200, "max_depth": 8, "min_samples_leaf": 1},
 ]
 
