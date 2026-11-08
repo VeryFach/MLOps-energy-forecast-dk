@@ -35,18 +35,23 @@ FEATURES = [
 ]
 
 
-def train_once(n_estimators=100, max_depth=None, min_samples_leaf=1,
-               data_path=None, register=False):
+def train_once(
+    n_estimators=100, max_depth=None, min_samples_leaf=1, data_path=None, register=False
+):
     data_path = data_path or PROCESSED_DIR / "merged_data.csv"
     if not data_path.is_file():
-        raise FileNotFoundError(f"Dataset tidak ditemukan: {data_path}. Jalankan python src/preprocess.py dahulu.")
+        raise FileNotFoundError(
+            f"Dataset tidak ditemukan: {data_path}. Jalankan python src/preprocess.py dahulu."
+        )
     data_hash = hashlib.md5(data_path.read_bytes()).hexdigest()
     df = pd.read_csv(data_path)
     df["datetime"] = pd.to_datetime(df["datetime"])
     df = df.sort_values("datetime").reset_index(drop=True)
     df = df.dropna(subset=FEATURES + [TARGET]).reset_index(drop=True)
     if len(df) < 10:
-        raise ValueError("Dataset terlalu kecil setelah membuang baris tanpa fitur/target.")
+        raise ValueError(
+            "Dataset terlalu kecil setelah membuang baris tanpa fitur/target."
+        )
 
     split_idx = int(len(df) * 0.8)
     train, test = df.iloc[:split_idx], df.iloc[split_idx:]
@@ -67,8 +72,11 @@ def train_once(n_estimators=100, max_depth=None, min_samples_leaf=1,
         mlflow.log_param("n_features", len(FEATURES))
 
         model = RandomForestRegressor(
-            n_estimators=n_estimators, max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf, random_state=42, n_jobs=-1,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            random_state=42,
+            n_jobs=-1,
         )
         model.fit(X_train, y_train)
 
@@ -84,7 +92,8 @@ def train_once(n_estimators=100, max_depth=None, min_samples_leaf=1,
 
         try:
             model_info = mlflow.sklearn.log_model(
-                sk_model=model, name="model",
+                sk_model=model,
+                name="model",
                 skops_trusted_types=["sklearn.tree._tree.Tree"],
             )
             model_uri = model_info.model_uri
@@ -96,7 +105,8 @@ def train_once(n_estimators=100, max_depth=None, min_samples_leaf=1,
             with TemporaryDirectory() as temp_dir:
                 model_dir = Path(temp_dir) / "model"
                 mlflow.sklearn.save_model(
-                    model, path=str(model_dir),
+                    model,
+                    path=str(model_dir),
                     skops_trusted_types=["sklearn.tree._tree.Tree"],
                 )
                 mlflow.log_artifacts(str(model_dir), artifact_path="model")
@@ -130,12 +140,20 @@ def train_once(n_estimators=100, max_depth=None, min_samples_leaf=1,
         if register:
             print(f"Model saved to {MODEL_PATH}")
         print(f"MLflow run: {run.info.run_id}")
-        return {"run_id": run.info.run_id, "rmse": rmse, "mae": mae,
-                "mape": mape, "model_uri": model_uri,
-                "data_md5": data_hash, "params": {
-                    "n_estimators": n_estimators, "max_depth": max_depth,
-                    "min_samples_leaf": min_samples_leaf, "random_state": 42,
-                }}
+        return {
+            "run_id": run.info.run_id,
+            "rmse": rmse,
+            "mae": mae,
+            "mape": mape,
+            "model_uri": model_uri,
+            "data_md5": data_hash,
+            "params": {
+                "n_estimators": n_estimators,
+                "max_depth": max_depth,
+                "min_samples_leaf": min_samples_leaf,
+                "random_state": 42,
+            },
+        }
 
 
 def main():

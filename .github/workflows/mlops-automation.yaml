@@ -1,0 +1,98 @@
+name: Code as a Trigger - MLOps
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 1 - Automated testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e . "mlflow==3.17.2" pytest
+      - run: python -m pytest -q
+
+  train-evaluate-register:
+    name: 2-4 - Train, validate, register Staging
+    needs: test
+    # GitHub does not expose repository secrets to pull requests from forks.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MLOPS_HOST: ${{ vars.MLOPS_HOST || '100.95.158.9' }}
+      MINIO_PORT: ${{ vars.MINIO_PORT || '9000' }}
+      MLFLOW_PORT: ${{ vars.MLFLOW_PORT || '5000' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+      MLOPS_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Check required repository secrets
+        shell: bash
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+        run: |
+          for name in TS_AUTHKEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::$name is missing in GitHub Actions Secrets"
+              exit 1
+            fi
+          done
+      - name: Connect to the service tailnet
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          ping: ${{ vars.MLOPS_HOST || '100.95.158.9' }}
+      - name: Check required credentials and endpoints
+        shell: bash
+        run: |
+          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY"
+          curl --fail --silent --show-error "http://${MLOPS_HOST}:${MLFLOW_PORT}/health"
+          curl --fail --silent --show-error "http://${MLOPS_HOST}:${MINIO_PORT}/minio/health/live"
+      - name: Install training and DVC dependencies
+        run: python -m pip install -e . "mlflow==3.17.2" "dvc[s3]>=3,<4"
+      - name: Pull versioned raw data from MinIO
+        shell: bash
+        run: |
+          dvc remote modify --local minio endpointurl "http://${MLOPS_HOST}:${MINIO_PORT}"
+          dvc pull data/raw/consumption.csv.dvc data/raw/weather.csv.dvc
+      - name: Preprocess DVC data
+        run: python src/preprocess.py --no-upload
+      - name: Train LK-06 candidates
+        shell: bash
+        run: python -m energy_forecast.models.train --no-register --tracking-uri "http://${MLOPS_HOST}:${MLFLOW_PORT}" --output-dir docs
+      - name: Validate LK-01 MAPE threshold
+        shell: bash
+        run: python -m energy_forecast.models.automation validate --tracking-uri "http://${MLOPS_HOST}:${MLFLOW_PORT}" --output-dir docs --max-mape 5.0
+      - name: Register validated model in Staging
+        shell: bash
+        run: python -m energy_forecast.models.automation register --tracking-uri "http://${MLOPS_HOST}:${MLFLOW_PORT}" --output-dir docs --max-mape 5.0
+      - name: Upload training and validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlops-evidence-${{ github.run_id }}
+          path: |
+            docs/experiment_results.csv
+            docs/best_run.json
+            docs/automation_validation.json
+            docs/model_metadata.md
+          if-no-files-found: warn

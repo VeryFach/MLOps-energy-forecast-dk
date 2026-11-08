@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 
@@ -9,18 +10,20 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from energy_forecast.config import (  # noqa: E402
+from energy_forecast.config import (
     PROCESSED_DIR,
     RAW_DIR,
 )
-from energy_forecast.storage import upload_dataframe_csv_to_minio  # noqa: E402
+from energy_forecast.storage import upload_dataframe_csv_to_minio
 
 
 def load_consumption() -> pd.DataFrame:
     """Load & agregasi konsumsi nasional (DK1+DK2 -> sum) per datetime."""
     path = RAW_DIR / "consumption.csv"
     if not path.exists():
-        raise FileNotFoundError(f"Tidak menemukan {path}. Jalankan `python src/ingest_data.py` dulu.")
+        raise FileNotFoundError(
+            f"Tidak menemukan {path}. Jalankan `python src/ingest_data.py` dulu."
+        )
     df = pd.read_csv(path)
     # Bersihkan duplikat jika ada (misal rerun ingestion append)
     df = df.drop_duplicates()
@@ -30,10 +33,14 @@ def load_consumption() -> pd.DataFrame:
     before = len(df)
     df = df.dropna(subset=["datetime", "ConsumptionMW"])
     if len(df) < before:
-        print(f"[preprocess] Dropped {before - len(df)} baris consumption dengan datetime/ConsumptionMW NaN")
+        print(
+            f"[preprocess] Dropped {before - len(df)} baris consumption dengan datetime/ConsumptionMW NaN"
+        )
     national = df.groupby("datetime", as_index=False)["ConsumptionMW"].sum()
     national.rename(columns={"ConsumptionMW": "consumption_mw"}, inplace=True)
-    print(f"[preprocess] Loaded consumption: {len(national)} jam unik (dari {before} records mentah)")
+    print(
+        f"[preprocess] Loaded consumption: {len(national)} jam unik (dari {before} records mentah)"
+    )
     return national
 
 
@@ -41,13 +48,18 @@ def load_weather() -> pd.DataFrame:
     """Load cuaca per jam, handling missing values."""
     path = RAW_DIR / "weather.csv"
     if not path.exists():
-        raise FileNotFoundError(f"Tidak menemukan {path}. Jalankan `python src/ingest_data.py` dulu.")
+        raise FileNotFoundError(
+            f"Tidak menemukan {path}. Jalankan `python src/ingest_data.py` dulu."
+        )
     df = pd.read_csv(path)
     df = df.drop_duplicates(subset=["time"])
     df["datetime"] = pd.to_datetime(df["time"], errors="coerce")
-    before = len(df)
     df = df.dropna(subset=["datetime"])
-    cols = [c for c in ["temperature_2m", "relativehumidity_2m", "windspeed_10m"] if c in df.columns]
+    cols = [
+        c
+        for c in ["temperature_2m", "relativehumidity_2m", "windspeed_10m"]
+        if c in df.columns
+    ]
     # Forward-fill gap cuaca singkat (max 3 jam) - contoh pembersihan missing values
     for col in cols:
         n_missing = df[col].isna().sum()
@@ -92,8 +104,14 @@ def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     # Weather sudah di-ffill di load_weather; lag NaN di 168 jam pertama dipertahankan
     # agar downstream bisa pilih dropna/fill sesuai kebutuhan training
     lag_cols = ["consumption_lag_24h", "consumption_lag_48h", "consumption_lag_168h"]
-    n_lag_nan = df[lag_cols].isna().any(axis=1).sum() if all(c in df.columns for c in lag_cols) else 0
-    print(f"[preprocess] Baris dengan lag NaN (wajar 168 jam pertama): {n_lag_nan}/{len(df)}")
+    n_lag_nan = (
+        df[lag_cols].isna().any(axis=1).sum()
+        if all(c in df.columns for c in lag_cols)
+        else 0
+    )
+    print(
+        f"[preprocess] Baris dengan lag NaN (wajar 168 jam pertama): {n_lag_nan}/{len(df)}"
+    )
     # Tidak drop di sini; biarkan `merged_data.csv` lengkap, training yang akan dropna
     return df
 
@@ -107,7 +125,9 @@ def save_processed(df: pd.DataFrame) -> Path:
     # Juga simpan versi ter-clean (drop lag NaN) sebagai contoh siap training
     clean_path = PROCESSED_DIR / "merged_data_clean.csv"
     df_clean = df.dropna(subset=["consumption_lag_168h"]).reset_index(drop=True)
-    print(f"[preprocess] Info: {len(df_clean)}/{len(df)} baris tanpa lag NaN (siap training). Simpan preview ke {clean_path} jika diperlukan.")
+    print(
+        f"[preprocess] Info: {len(df_clean)}/{len(df)} baris tanpa lag NaN (siap training). Simpan preview ke {clean_path} jika diperlukan."
+    )
     # Tidak wajib save clean versi, tapi beri info
     return out_path
 
@@ -117,13 +137,22 @@ def upload_to_minio(df: pd.DataFrame) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Build features from DVC raw data")
+    parser.add_argument(
+        "--no-upload",
+        action="store_true",
+        help="Do not replace the processed object in MinIO",
+    )
+    args = parser.parse_args()
     print("[preprocess] Memulai prapemrosesan...")
     consumption = load_consumption()
     weather = load_weather()
     merged = pd.merge(consumption, weather, on="datetime", how="inner")
     print(f"[preprocess] After inner merge: {len(merged)} records")
     if merged.empty:
-        raise ValueError("Hasil merge kosong. Cek overlap datetime consumption vs weather.")
+        raise ValueError(
+            "Hasil merge kosong. Cek overlap datetime consumption vs weather."
+        )
 
     merged = add_time_features(merged)
     merged = add_holiday_feature(merged)
@@ -131,7 +160,8 @@ def main():
     merged = clean_missing_values(merged)
 
     save_processed(merged)
-    upload_to_minio(merged)
+    if not args.no_upload:
+        upload_to_minio(merged)
     print("[preprocess] Selesai. Data siap untuk feature extraction / training.")
 
 

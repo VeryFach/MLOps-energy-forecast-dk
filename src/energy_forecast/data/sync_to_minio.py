@@ -23,11 +23,17 @@ def main():
         local_md5 = hashlib.md5(path.read_bytes()).hexdigest()
         if path.parent == RAW_DIR:
             pointer = path.with_name(path.name + ".dvc")
-            match = re.search(r"(?m)^\s*-\s*md5:\s*([0-9a-f]{32})\s*$", pointer.read_text())
+            match = re.search(
+                r"(?m)^\s*-\s*md5:\s*([0-9a-f]{32})\s*$", pointer.read_text()
+            )
             if not match or local_md5 != match.group(1):
-                raise ValueError(f"Hash {path} tidak cocok dengan pointer DVC: {pointer}")
+                raise ValueError(
+                    f"Hash {path} tidak cocok dengan pointer DVC: {pointer}"
+                )
 
-        client.fput_object(MINIO_BUCKET, object_name, str(path), content_type="text/csv")
+        client.fput_object(
+            MINIO_BUCKET, object_name, str(path), content_type="text/csv"
+        )
         response = client.get_object(MINIO_BUCKET, object_name)
         try:
             remote_md5 = hashlib.md5(response.read()).hexdigest()

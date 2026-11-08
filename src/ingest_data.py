@@ -10,7 +10,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from energy_forecast.config import (  # noqa: E402
+from energy_forecast.config import (
     CONSUMPTION_FIELD,
     DATA_START_DATE,
     ENERGIDATA_DATASET_URL,
@@ -22,7 +22,7 @@ from energy_forecast.config import (  # noqa: E402
     RAW_DIR,
     WEATHER_VARIABLES,
 )
-from energy_forecast.storage import upload_dataframe_csv_to_minio  # noqa: E402
+from energy_forecast.storage import upload_dataframe_csv_to_minio
 
 
 def fetch_energy_from_api() -> pd.DataFrame:
@@ -38,7 +38,9 @@ def fetch_energy_from_api() -> pd.DataFrame:
     records = response.json()["records"]
     df = pd.DataFrame(records)
     if df.empty:
-        raise ValueError("API mengembalikan 0 records. Cek DATA_START_DATE / FETCH_LIMIT / dataset URL.")
+        raise ValueError(
+            "API mengembalikan 0 records. Cek DATA_START_DATE / FETCH_LIMIT / dataset URL."
+        )
     consumption = df[["TimeUTC", "TimeDK", "PriceArea", CONSUMPTION_FIELD]].copy()
     consumption.rename(columns={CONSUMPTION_FIELD: "ConsumptionMW"}, inplace=True)
     print(f"[ingest] Fetched {len(consumption)} energy records (DK1+DK2 combined).")
@@ -59,7 +61,9 @@ def fetch_weather_from_api() -> pd.DataFrame:
     response.raise_for_status()
     hourly = response.json()["hourly"]
     weather = pd.DataFrame(hourly)
-    print(f"[ingest] Fetched {len(weather)} weather records ({HISTORY_START_DATE} -> today).")
+    print(
+        f"[ingest] Fetched {len(weather)} weather records ({HISTORY_START_DATE} -> today)."
+    )
     return weather
 
 
@@ -75,7 +79,9 @@ def save_with_timestamp(df: pd.DataFrame, stem: str) -> tuple[Path, Path]:
     df.to_csv(timestamped_path, index=False)
     df.to_csv(latest_path, index=False)
     print(f"[ingest] Saved {len(df)} records to {timestamped_path}")
-    print(f"[ingest] Updated latest snapshot to {latest_path} (timestamped copy preserved, non-destructive)")
+    print(
+        f"[ingest] Updated latest snapshot to {latest_path} (timestamped copy preserved, non-destructive)"
+    )
     return timestamped_path, latest_path
 
 

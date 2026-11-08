@@ -554,6 +554,25 @@ All parameters live in `src/energy_forecast/config.py`:
 8. **Monitoring** — `evaluate_model` + `check_trigger` detect drift and auto-retrain (MAPE > 5% OR drift signals exceeded).
 9. **Serving** — FastAPI serves predictions via REST API, containerized with Docker.
 
+## [LK-08] Code as a Trigger
+
+Workflow [`.github/workflows/mlops-automation.yaml`](.github/workflows/mlops-automation.yaml) berjalan pada push ke `main` dan pull request ke `main`. Urutannya: `pytest` -> `dvc pull` -> prapemrosesan -> tiga training run LK-06 -> validasi MAPE LK-01 (maksimal 5%) -> registrasi versi **Staging**. Jika satu langkah gagal, langkah berikutnya berhenti. Pull request dari fork hanya menjalankan job tes karena GitHub tidak memberikan secrets repositori kepada fork.
+
+Runner GitHub Actions menggunakan Tailscale untuk menjangkau host `100.95.158.9`. Siapkan GitHub Actions secrets `TS_AUTHKEY`, `MINIO_ACCESS_KEY`, dan `MINIO_SECRET_KEY`. Auth key harus dapat mengakses host layanan dan MinIO key harus dapat membaca bucket `energy-forecast`. Jika port/host berbeda, atur repository variables `MLOPS_HOST` (default `100.95.158.9`), `MLFLOW_PORT` (default `5000`), dan `MINIO_PORT` (default `9000`). Di Docker lokal, port Grafana adalah `3001`, Prometheus `9090`, dan konsol MinIO `9001`; layanan ini tidak diperlukan oleh runner untuk training.
+
+Untuk uji lokal, jalankan `docker compose up -d mlflow minio` dan pastikan objek DVC untuk pointer Git sudah ada pada bucket MinIO lokal. Set `AWS_ACCESS_KEY_ID` dan `AWS_SECRET_ACCESS_KEY`, lalu jalankan perintah berikut dari root repo dengan environment `MLFLOW_TRACKING_URI=http://localhost:5000`:
+
+```bash
+dvc remote modify --local minio endpointurl http://localhost:9000
+dvc pull data/raw/consumption.csv.dvc data/raw/weather.csv.dvc
+python src/preprocess.py --no-upload
+python -m energy_forecast.models.train --no-register --output-dir docs
+python -m energy_forecast.models.automation validate --output-dir docs --max-mape 5.0
+python -m energy_forecast.models.automation register --output-dir docs --max-mape 5.0
+```
+
+Tiga file `docs/best_run.json`, `docs/automation_validation.json`, dan `docs/experiment_results.csv` diunggah sebagai artefak Actions. Riwayat run dan log dapat dilihat pada tab **Actions > Code as a Trigger - MLOps** setelah push atau pull request. Refleksi singkat tersedia pada [`docs/refleksi_code_as_trigger.pdf`](docs/refleksi_code_as_trigger.pdf).
+
 ## Troubleshooting
 
 **Error 429 (Rate limit)** — Energi Data Service limits request frequency. Wait a few minutes and rerun.
