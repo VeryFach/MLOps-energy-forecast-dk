@@ -515,6 +515,83 @@ PDF dapat dibuat ulang setelah menjalankan stack dengan:
 python3 scripts/build_docker_compose_report.py
 ```
 
+### MLflow Model Serving dan horizontal scaling
+
+Service `model-serving` menggunakan image MLflow yang berisi model
+`energy-forecast-baseline` versi Production. Registry harus memiliki versi
+Production sebelum image dibuat. Gunakan environment aplikasi Python 3.11
+yang disiapkan oleh image API agar versi MLflow dan dependensi model cocok.
+
+Pertama, jalankan tracking server dan object storage:
+
+```bash
+docker compose up -d mlflow minio
+docker compose build api
+```
+
+Untuk menjalankan serving lokal dengan `mlflow models serve` pada port 5001:
+
+```bash
+docker compose run --rm -p 5001:5000 api \
+  mlflow models serve \
+  --model-uri models:/energy-forecast-baseline/Production \
+  --no-conda --host 0.0.0.0 --port 5000
+```
+
+Endpoint serving MLflow menerima `dataframe_split`. Contoh satu baris input
+dengan fitur yang diharapkan model:
+
+```bash
+curl -X POST http://localhost:5001/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"dataframe_split":{"columns":["temperature_2m","relativehumidity_2m","windspeed_10m","hour","day_of_week","month","is_weekend","is_holiday_dk","consumption_lag_24h","consumption_lag_48h","consumption_lag_168h"],"data":[[14.0,70.0,5.0,12,2,6,0,0,4500.0,4600.0,4400.0]]}}'
+```
+
+Hasil uji pada model Production versi 2 adalah `{"predictions": [4558.303628550001]}`.
+Hentikan serving lokal dengan `Ctrl+C` sebelum memakai port 5001 untuk hal lain.
+
+Buat image kontainer MLflow dari model Production:
+
+```bash
+bash scripts/build_mlflow_serving_image.sh
+```
+
+Skrip menjalankan `mlflow models build-docker` dan membuat image lokal
+`energy-forecast-mlflow-model:production`. Skrip perlu akses ke Docker daemon
+melalui `/var/run/docker.sock`. Sesudah image tersedia, jalankan stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Compose mengatur `deploy.replicas: 3` pada `model-serving`. Model gateway
+tersedia di `http://localhost:8001` dan meneruskan request ke replika yang
+sehat. Gunakan endpoint `/invocations` dan format input di atas. API FastAPI
+yang sudah ada tetap tersedia di `http://localhost:8000/predict` dengan input
+`{"hours": 24}`.
+
+Jumlah replika dapat dinaikkan atau diturunkan tanpa mengubah YAML:
+
+```bash
+docker compose up -d --scale model-serving=5
+docker compose ps
+```
+
+Ganti `5` dengan jumlah replika yang diinginkan. Untuk kembali ke tiga replika,
+jalankan `docker compose up -d --scale model-serving=3`. Gateway memakai DNS
+internal Docker agar dapat menemukan alamat service setelah jumlah replika
+berubah.
+
+Laporan uji serving, input/output prediksi, hasil tiga replika, dan simulasi
+perubahan jumlah replika tersedia di
+[`docs/report_mlflow_serving_scaling.pdf`](docs/report_mlflow_serving_scaling.pdf).
+Bangun ulang laporan setelah pengujian dengan:
+
+```bash
+python3 scripts/build_mlflow_serving_report.py
+```
+
 Untuk menghentikan stack tanpa menghapus data persisten:
 
 ```bash
