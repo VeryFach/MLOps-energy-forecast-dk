@@ -52,7 +52,7 @@ energy-forecast-dk/
 ├── docs/
 │   └── README.md                 # Detailed pipeline & usage documentation
 ├── Dockerfile                    # API container image
-├── docker-compose.yml            # Full stack: API, MLflow, Prometheus, Grafana
+├── docker-compose.yaml           # Full stack: API, MLflow, MinIO, Prometheus, Grafana
 ├── pyproject.toml
 ├── .gitignore
 └── README.md
@@ -71,7 +71,7 @@ energy-forecast-dk/
 - [Git](https://git-scm.com/)
 - Internet access (to reach the APIs)
 - Docker & Docker Compose (for full MLOps stack)
-- MinIO on port 9000 for object storage. It is included in `docker-compose.yml`; for local non-Docker runs, start it manually or set `MINIO_ENDPOINT`.
+- MinIO on port 9000 for object storage. It is included in `docker-compose.yaml`; for local non-Docker runs, start it manually or set `MINIO_ENDPOINT`.
 - Apache Airflow (for DAG-based orchestration)
 
 ## Setup
@@ -483,11 +483,42 @@ example when validating the deployment.
 
 ## Docker Deployment
 
-Jalankan stack Docker lokal (API + MinIO + MLflow + Prometheus + Grafana):
+Jalankan seluruh stack dari direktori utama proyek. Compose membangun API,
+menjalankan MLflow dan MinIO sebagai layanan pendukung, serta menyertakan
+Prometheus, Grafana, ingestion, dan retraining terjadwal:
 
 ```bash
 docker compose up -d --build
 docker compose ps
+```
+
+Semua layanan berbagi custom bridge network `energy-forecast-network` dan
+berkomunikasi melalui nama layanan (`mlflow`, `minio`, dan `api`). API menunggu
+MLflow dan MinIO berstatus sehat sebelum dimulai. Database/artefak MLflow,
+objek MinIO, dan data Prometheus/Grafana disimpan pada named volume; dataset,
+model lokal, dan log memakai bind mount ke direktori proyek. Periksa status
+dan uji konektivitas dari API dengan:
+
+```bash
+docker compose ps
+docker compose exec api python -c "import urllib.request; print(urllib.request.urlopen('http://mlflow:5000/health').status); print(urllib.request.urlopen('http://minio:9000/minio/health/live').status)"
+curl http://localhost:8000/health
+```
+
+Laporan teknis empat halaman di
+[`docs/report_docker_compose.pdf`](docs/report_docker_compose.pdf) menjelaskan
+arsitektur layanan, network dan service discovery, volume persisten, urutan
+startup, langkah deployment, serta hasil pemeriksaan status dan komunikasi.
+PDF dapat dibuat ulang setelah menjalankan stack dengan:
+
+```bash
+python3 scripts/build_docker_compose_report.py
+```
+
+Untuk menghentikan stack tanpa menghapus data persisten:
+
+```bash
+docker compose down
 ```
 
 Container MinIO yang baru masih kosong. Untuk memakai dataset DVC LK-05 yang
@@ -511,7 +542,7 @@ Registry di MLflow (`http://localhost:5000`), serta `GET /health` dan
 `POST /predict` di API (`http://localhost:8000/docs`). Database dan artefak
 MLflow Docker disimpan dalam volume `mlflow-data`; data MinIO dalam `minio-data`.
 Stack ini berjalan lokal untuk uji integrasi, dengan konfigurasi kredensial
-pengembangan dari `docker-compose.yml`.
+pengembangan dari `docker-compose.yaml`.
 
 Services:
 | Service | Port | Description |

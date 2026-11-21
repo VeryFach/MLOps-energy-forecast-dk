@@ -67,6 +67,9 @@ image/*
 !/docs/.pdf
 !/docs/.dvc
 !/docs/.png
+!/docs/report_docker_compose.pdf
 
 # Skrip pribadi baru tetap lokal; skrip yang sudah dilacak Git tetap dilacak
 /scripts/
+!/scripts/
+/scripts/*

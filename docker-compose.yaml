@@ -15,8 +15,10 @@ services:
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_BUCKET=energy-forecast
     depends_on:
-      - mlflow
-      - minio
+      mlflow:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import json,urllib.request; h=json.load(urllib.request.urlopen('http://localhost:8000/health')); assert h['status']=='healthy' and h['model_loaded']"]
       interval: 30s
@@ -27,6 +29,8 @@ services:
     labels:
       - "prometheus.scrape=true"
       - "prometheus.port=8000"
+    networks:
+      - energy-forecast
 
   ingestion:
     build: .
@@ -44,7 +48,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-m", "energy_forecast.orchestration.healthcheck", "--file", "/app/logs/ingestion.heartbeat", "--max-age-seconds", "900"]
       interval: 30s
@@ -52,6 +57,8 @@ services:
       start_period: 30s
       retries: 3
     restart: unless-stopped
+    networks:
+      - energy-forecast
 
   daily-retraining:
     build: .
@@ -72,8 +79,10 @@ services:
       - ./logs:/app/logs
       - ./models:/app/models
     depends_on:
-      - mlflow
-      - minio
+      mlflow:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-m", "energy_forecast.orchestration.healthcheck", "--file", "/app/logs/daily-retraining.heartbeat", "--max-age-seconds", "3600"]
       interval: 30s
@@ -81,6 +90,8 @@ services:
       start_period: 30s
       retries: 3
     restart: unless-stopped
+    networks:
+      - energy-forecast
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.10.0
@@ -89,7 +100,15 @@ services:
     command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --serve-artifacts --default-artifact-root mlflow-artifacts:/ --artifacts-destination /mlflow/artifacts
     volumes:
       - mlflow-data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     restart: unless-stopped
+    networks:
+      - energy-forecast
 
   minio:
     image: pgsty/silo:latest
@@ -102,7 +121,15 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
     restart: unless-stopped
+    networks:
+      - energy-forecast
 
   prometheus:
     image: prom/prometheus:v2.47.0
@@ -112,6 +139,8 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     restart: unless-stopped
+    networks:
+      - energy-forecast
 
   grafana:
     image: grafana/grafana:10.1.0
@@ -126,9 +155,16 @@ services:
     depends_on:
       - prometheus
     restart: unless-stopped
+    networks:
+      - energy-forecast
 
 volumes:
   mlflow-data:
   minio-data:
   prometheus-data:
   grafana-data:
+
+networks:
+  energy-forecast:
+    name: energy-forecast-network
+    driver: bridge
